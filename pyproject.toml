@@ -1,0 +1,17 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "radioprotection"
+version = "0.1.0"
+description = "Radiological transport and dosimetry modelling"
+authors = [
+    {name = "Marcos Sarmiento Pellitero"}
+]
+
+dependencies = [
+    "numpy",
+    "scipy",
+    "matplotlib"
+]
