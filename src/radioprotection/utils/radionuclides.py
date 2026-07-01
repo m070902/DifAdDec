@@ -1,7 +1,8 @@
 import csv
 import numpy as np
+from importlib.resources import files
 
-def read_radionuclides_file(file_name):
+def read_radionuclides_file(file_name: str):
     radionuclides = []
     half_life_values = []
     units = []
@@ -29,9 +30,8 @@ def read_radionuclides_file(file_name):
 
     return radionuclides, half_life_values, units, types
 
-from importlib.resources import files
 
-def lambda_for_species(species_name):
+def lambda_for_species(species_name: str):
     path = files("radioprotection.data").joinpath("radionuclidos.csv")
     radionuclides, half_life_values, units, types = read_radionuclides_file(path)
 

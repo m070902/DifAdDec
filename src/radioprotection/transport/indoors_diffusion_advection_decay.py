@@ -1,9 +1,12 @@
-import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
 from scipy.sparse import lil_matrix
 from scipy.sparse.linalg import cg
 from scipy.sparse.linalg import spsolve
+import numpy as np
+import matplotlib.pyplot as plt
+from matplotlib.animation import FuncAnimation
+
 
 from radioprotection.utils import (
         diffusion_comprobation,
@@ -11,21 +14,24 @@ from radioprotection.utils import (
         lambda_for_species
 )
 
-VISCOSITY_OF_AIR = 1.5e10-5 # micro pascales x segundo
-
 class IndoorsDiffusionAdvectionDecay:
 
     def __init__(
         self,
         grid_shape=(50, 50, 30),
-        d=(0.5, 0.5, 0.5, 0.01),
+        d=(0.5, 0.5, 0.5, 0.1),
         total_time=100.0,
         diffusion_coefficient=(1e-3, 1e-3, 1e-3),   # m²/s
         initial_velocity=(0.05, 0.0, 0.0),      # m/s
         species_name = "U-234",
         source_positions=[(25, 25, 15)],
         emission_rate=1.0,
-        wall_deposition=1e-4           # m/s
+        wall_deposition=1e-4,           # m/s
+        inlet_regions=None,
+        outlet_regions=None,
+        inlet_velocity=0.0,
+        outlet_velocity=0.0,
+        inlet_concentration=0.0
     ):
 
         self.__N = grid_shape
@@ -41,58 +47,189 @@ class IndoorsDiffusionAdvectionDecay:
         self.__concentration = np.zeros(self.__N)
         self.__saved_fields = {}
 
+        self.__inlet_regions = inlet_regions or []
+        self.__outlet_regions = outlet_regions or []
+
+        self.__inlet_velocity = inlet_velocity
+        self.__outlet_velocity = outlet_velocity
+        self.__inlet_concentration = inlet_concentration
+
+        self.__ventilation_masks = (
+        self._build_ventilation_masks()
+        )
+
         self.__velocity = self._build_velocity_field_for_closed_room()
 
-        self._init_poisson_matrix()
-
-        # ==========================
-        # Verificación estabilidad
-        # ==========================
         if (diffusion_comprobation(self.__diffusion_coefficient, d) == False) or (CFL_comprobation(self.__velocity, d) == False):
             raise ValueError("The provided values for the function 'diffusion_advection_decay' do not follow the stability conditions of the equation.")
 
-    def _init_poisson_matrix(self):
-        """Construye la matriz A asegurando que sea invertible y bien condicionada"""
-        Nx, Ny, Nz = self.__N
-        total_cells = Nx * Ny * Nz
-        A = lil_matrix((total_cells, total_cells))
 
-        def get_idx(i, j, k):
-            return i * (Ny * Nz) + j * Nz + k
+    def _build_ventilation_masks(self):
 
-        for i in range(total_cells):
-            # Por defecto, ponemos un 1 en la diagonal para las celdas de frontera
-            A[i, i] = 1.0
+        masks = {
 
-        # Llenamos las ecuaciones de Poisson SOLO para los puntos internos
-        for i in range(1, Nx - 1):
-            for j in range(1, Ny - 1):
-                for k in range(1, Nz - 1):
-                    idx = get_idx(i, j, k)
+            "xmin_in": np.zeros(self.__N,dtype=bool),
+            "xmin_out": np.zeros(self.__N,dtype=bool),
 
-                    # Forzamos un punto de referencia (presión de medición = 0)
-                    # Elegimos la primera celda interna [1, 1, 1] para romper la singularidad
-                    if i == 1 and j == 1 and k == 1:
-                        A[idx, idx] = 1.0
-                        # No añadimos vecinos para que p[1,1,1] dependa únicamente de div
-                        continue
+            "xmax_in": np.zeros(self.__N,dtype=bool),
+            "xmax_out": np.zeros(self.__N,dtype=bool),
 
-                    # Ecuación estándar del laplaciano de 7 puntos
-                    A[idx, idx] = -6.0
-                    A[idx, get_idx(i+1, j, k)] = 1.0
-                    A[idx, get_idx(i-1, j, k)] = 1.0
-                    A[idx, get_idx(i, j+1, k)] = 1.0
-                    A[idx, get_idx(i, j-1, k)] = 1.0
-                    A[idx, get_idx(i, j, k+1)] = 1.0
-                    A[idx, get_idx(i, j, k-1)] = 1.0
+            "ymin_in": np.zeros(self.__N,dtype=bool),
+            "ymin_out": np.zeros(self.__N,dtype=bool),
 
-        self.__A_csr = A.tocsr()
+            "ymax_in": np.zeros(self.__N,dtype=bool),
+            "ymax_out": np.zeros(self.__N,dtype=bool),
 
-    # ==========================================================
-    # Campo de velocidades con no-slip aproximado (utilizamos las condiciones de conservación de masa y navier stokes, así como el hecho de que existe no-slip, es decir, que no hay velocidad en la superficie de las paredes)
-    # ==========================================================
+            "zmin_in": np.zeros(self.__N,dtype=bool),
+            "zmin_out": np.zeros(self.__N,dtype=bool),
+
+            "zmax_in": np.zeros(self.__N,dtype=bool),
+            "zmax_out": np.zeros(self.__N,dtype=bool)
+        }
+
+        for reg in self.__inlet_regions:
+
+            wall = reg["wall"]
+
+            if wall == "xmin":
+
+                y0,y1 = reg["y"]
+                z0,z1 = reg["z"]
+
+                masks["xmin_in"][
+                    0,
+                    y0:y1,
+                    z0:z1
+                ] = True
+
+            if wall == "xmax":
+
+                y0,y1 = reg["y"]
+                z0,z1 = reg["z"]
+
+                masks["xmax_in"][
+                    -1,
+                    y0:y1,
+                    z0:z1
+                ] = True
+
+            if wall == "ymin":
+
+                x0,x1 = reg["x"]
+                z0,z1 = reg["z"]
+
+                masks["ymin_in"][
+                    x0:x1,
+                    0,
+                    z0:z1
+                ] = True
+
+            if wall == "ymax":
+
+                x0,x1 = reg["x"]
+                z0,z1 = reg["z"]
+
+                masks["ymax_in"][
+                    x0:x1,
+                    -1,
+                    z0:z1
+                ] = True
+
+            if wall == "zmin":
+
+                x0,x1 = reg["x"]
+                y0,y1 = reg["y"]
+
+                masks["zmin_in"][
+                    x0:x1,
+                    y0:y1,
+                    0
+                ] = True
+
+            if wall == "zmax":
+
+                x0,x1 = reg["x"]
+                y0,y1 = reg["y"]
+
+                masks["zmax_in"][
+                    x0:x1,
+                    y0:y1,
+                    -1
+                ] = True
+
+        for reg in self.__outlet_regions:
+
+            wall = reg["wall"]
+
+            if wall == "xmin":
+
+                y0,y1 = reg["y"]
+                z0,z1 = reg["z"]
+
+                masks["xmin_out"][
+                    0,
+                    y0:y1,
+                    z0:z1
+                ] = True
+
+            if wall == "xmax":
+
+                y0,y1 = reg["y"]
+                z0,z1 = reg["z"]
+
+                masks["xmax_out"][
+                    -1,
+                    y0:y1,
+                    z0:z1
+                ] = True
+
+            if wall == "ymin":
+
+                x0,x1 = reg["x"]
+                z0,z1 = reg["z"]
+
+                masks["ymin_out"][
+                    x0:x1,
+                    0,
+                    z0:z1
+                ] = True
+
+            if wall == "ymax":
+
+                x0,x1 = reg["x"]
+                z0,z1 = reg["z"]
+
+                masks["ymax_out"][
+                    x0:x1,
+                    -1,
+                    z0:z1
+                ] = True
+
+            if wall == "zmin":
+
+                x0,x1 = reg["x"]
+                y0,y1 = reg["y"]
+
+                masks["zmin_out"][
+                    x0:x1,
+                    y0:y1,
+                    0
+                ] = True
+
+            if wall == "zmax":
+
+                x0,x1 = reg["x"]
+                y0,y1 = reg["y"]
+
+                masks["zmax_out"][
+                    x0:x1,
+                    y0:y1,
+                    -1
+                ] = True
+
+        return masks
+
     def _build_velocity_field_for_closed_room(self):
-
         vx = np.full((self.__N), self.__initial_velocity[0])
         vy = np.full((self.__N), self.__initial_velocity[1])
         vz = np.full((self.__N), self.__initial_velocity[2])
@@ -113,110 +250,145 @@ class IndoorsDiffusionAdvectionDecay:
         vy *= FY
         vz *= FZ
 
+        for inlet in self.__inlet_regions:
+
+            if inlet["wall"] == "xmin":
+
+                y0,y1 = inlet["y"]
+                z0,z1 = inlet["z"]
+
+                vx[
+                    0:30,
+                    y0:y1,
+                    z0:z1
+                ] += self.__inlet_velocity
+
+            if inlet["wall"] == "xmax":
+
+                y0,y1 = inlet["y"]
+                z0,z1 = inlet["z"]
+
+                vx[
+                    0:30,
+                    y0:y1,
+                    z0:z1
+                ] -= self.__inlet_velocity
+
+            if inlet["wall"] == "ymin":
+
+                x0,x1 = inlet["x"]
+                z0,z1 = inlet["z"]
+
+                vy[
+                    x0:x1,
+                    0:30,
+                    z0:z1
+                ] += self.__inlet_velocity
+
+            if inlet["wall"] == "ymax":
+
+                x0,x1 = inlet["x"]
+                z0,z1 = inlet["z"]
+
+                vy[
+                    x0:x1,
+                    0:30,
+                    z0:z1
+                ] -= self.__inlet_velocity
+
+            if inlet["wall"] == "zmin":
+
+                x0,x1 = inlet["x"]
+                y0,y1 = inlet["y"]
+
+                vz[
+                    x0:x1,
+                    y0:y1,
+                    0:20
+                ] += self.__inlet_velocity
+
+            if inlet["wall"] == "zmax":
+
+                x0,x1 = inlet["x"]
+                y0,y1 = inlet["y"]
+
+                vz[
+                    x0:x1,
+                    y0:y1,
+                    0:20
+                ] -= self.__inlet_velocity
+
+        for outlet in self.__outlet_regions:
+
+            if outlet["wall"] == "xmin":
+
+                y0,y1 = outlet["y"]
+                z0,z1 = outlet["z"]
+
+                vx[
+                    -30:,
+                    y0:y1,
+                    z0:z1
+                ] += self.__outlet_velocity
+
+            if outlet["wall"] == "xmax":
+
+                y0,y1 = outlet["y"]
+                z0,z1 = outlet["z"]
+
+                vx[
+                    -30:,
+                    y0:y1,
+                    z0:z1
+                ] -= self.__outlet_velocity
+
+            if outlet["wall"] == "ymin":
+
+                x0,x1 = outlet["x"]
+                z0,z1 = outlet["z"]
+
+                vy[
+                    x0:x1,
+                    -30:,
+                    z0:z1
+                ] += self.__outlet_velocity
+
+            if outlet["wall"] == "ymax":
+
+                x0,x1 = outlet["x"]
+                z0,z1 = outlet["z"]
+
+                vy[
+                    x0:x1,
+                    -30:,
+                    z0:z1
+                ] -= self.__outlet_velocity
+
+            if outlet["wall"] == "zmin":
+
+                x0,x1 = outlet["x"]
+                y0,y1 = outlet["y"]
+
+                vz[
+                    x0:x1,
+                    y0:y1,
+                    -20:
+                ] += self.__outlet_velocity
+
+            if outlet["wall"] == "zmax":
+
+                x0,x1 = outlet["x"]
+                y0,y1 = outlet["y"]
+
+                vz[
+                    x0:x1,
+                    y0:y1,
+                    -20:
+                ] -= self.__outlet_velocity
+
         return [vx, vy, vz]
 
-    def _laplacian(self, f):
-        """Calcula el Laplaciano discreto de 7 puntos en 3D"""
-        dx2 = self.__d[0]**2
-        lap = np.zeros_like(f)
-        # Diferencias finitas (asumiendo dx = dy = dz = 1 por simplicidad)
-        lap[1:-1, 1:-1, 1:-1] = (
-            (f[2:, 1:-1, 1:-1] + f[:-2, 1:-1, 1:-1] - 2*f[1:-1, 1:-1, 1:-1]) / dx2 +
-            (f[1:-1, 2:, 1:-1] + f[1:-1, :-2, 1:-1] - 2*f[1:-1, 1:-1, 1:-1]) / dx2 +
-            (f[1:-1, 1:-1, 2:] + f[1:-1, 1:-1, :-2] - 2*f[1:-1, 1:-1, 1:-1]) / dx2
-        )
-        return lap
-
-    def _step_velocity(self):
-        # 1. ADVECCIÓN (Simplificada)
-        vx_prev, vy_prev, vz_prev = self.__velocity[0].copy(), self.__velocity[1].copy(), self.__velocity[2].copy()
-
-        # 2. DIFUSIÓN (Viscosidad Cinemática Real del Aire en SI: ~1.5e-5 m²/s)
-        # Nota: Multiplicar por un factor de seguridad bajo para evitar rebasar el límite explícito
-        nu = 1.5e-5
-        dt = self.__d[3]
-
-        self.__velocity[0] += dt * nu * self._laplacian(vx_prev)
-        self.__velocity[1] += dt * nu * self._laplacian(vy_prev)
-        self.__velocity[2] += dt * nu * self._laplacian(vz_prev)
-
-        # Aplicar condiciones de contorno de habitación cerrada (No-slip)
-        self._apply_boundaries_velocity()
-
-        # 3. PROYECCIÓN (Incompresibilidad)
-        # 3.1 Calcular Divergencia
-        dx, dy, dz = self.__d[0], self.__d[1], self.__d[2]
-        div = np.zeros_like(self.__velocity[0])
-
-        div[1:-1, 1:-1, 1:-1] = (
-            (self.__velocity[0][2:, 1:-1, 1:-1] - self.__velocity[0][:-2, 1:-1, 1:-1]) / (2.0 * dx) +
-            (self.__velocity[1][1:-1, 2:, 1:-1] - self.__velocity[1][1:-1, :-2, 1:-1]) / (2.0 * dy) +
-            (self.__velocity[2][1:-1, 1:-1, 2:] - self.__velocity[2][1:-1, 1:-1, :-2]) / (2.0 * dz)
-        )
-
-        # 3.2 Resolver Poisson para la Presión (∇²p = div)
-        # Nota: En producción, 'p' se resuelve aplanando la matriz y usando un solver lineal (CG/Krylov)
-        p = self._solve_poisson(div)
-
-        # 3.3 Restar el Gradiente de Presión
-        # 3.3 Restar el Gradiente de Presión corregido espacialmente
-        dx, dy, dz = self.__d[0], self.__d[1], self.__d[2]
-
-        self.__velocity[0][1:-1, 1:-1, 1:-1] -= (p[2:, 1:-1, 1:-1] - p[:-2, 1:-1, 1:-1]) / (2.0 * dx)
-        self.__velocity[1][1:-1, 1:-1, 1:-1] -= (p[1:-1, 2:, 1:-1] - p[1:-1, :-2, 1:-1]) / (2.0 * dy)
-        self.__velocity[2][1:-1, 1:-1, 1:-1] -= (p[1:-1, 1:-1, 2:] - p[1:-1, 1:-1, :-2]) / (2.0 * dz)
-
-        self._apply_boundaries_velocity()
-
-    def _apply_boundaries_velocity(self):
-        """Fuerza que la velocidad en las paredes de la habitación sea cero"""
-        for v in self.__velocity:
-            v[0, :, :] = v[-1, :, :] = 0
-            v[:, 0, :] = v[:, -1, :] = 0
-            v[:, :, 0] = v[:, :, -1] = 0
-
-    def _solve_poisson(self, div):
-        """Resuelve el sistema lineal de presión usando un solver directo robusto"""
-        # 1. Asegurar que las fronteras de la divergencia no inyecten ruido al sistema
-        b = div.copy()
-
-        # Forzar que los bordes del término independiente sean 0
-        # ya que en la matriz A pusimos la identidad (1.0) en las fronteras
-        b[0, :, :] = b[-1, :, :] = 0
-        b[:, 0, :] = b[:, -1, :] = 0
-        b[:, :, 0] = b[:, :, -1] = 0
-
-        # Forzar la presión de referencia en el nodo [1, 1, 1]
-        b[1, 1, 1] = 0.0
-
-        # 2. Aplanar el término independiente corregido
-        b_flat = b.flatten()
-
-        # 3. Resolver usando solver directo (adiós problemas de overflow en productos punto)
-        try:
-            p_flat = spsolve(self.__A_csr, b_flat)
-        except:
-            # En caso de emergencia si la matriz se desborda
-            p_flat = np.zeros_like(b_flat)
-
-        # 4. Reestructurar a la matriz 3D original
-        p = p_flat.reshape(self.__N)
-
-        # 5. Aplicar condiciones de contorno Neumann para la presión
-        p[0, :, :] = p[1, :, :]
-        p[-1, :, :] = p[-2, :, :]
-        p[:, 0, :] = p[:, 1, :]
-        p[:, -1, :] = p[:, -2, :]
-        p[:, :, 0] = p[:, :, 1]
-        p[:, :, -1] = p[:, :, -2]
-
-        return p
-
-
-    # ==========================================================
-    # Difusión
-    # ==========================================================
-    def _compute_diffusion(self, concentration_aux):
+    def _compute_diffusion(self, concentration_aux: dict[str, list[float]]):
 
         return (
             self.__diffusion_coefficient[0] * (
@@ -245,7 +417,7 @@ class IndoorsDiffusionAdvectionDecay:
     # ==========================================================
     # Advección UPWIND
     # ==========================================================
-    def _compute_advection(self, concentration_aux):
+    def _compute_advection(self, concentration_aux: dict[str, list[float]]):
 
         adv = np.zeros_like(concentration_aux[1:-1,1:-1,1:-1])
 
@@ -319,24 +491,186 @@ class IndoorsDiffusionAdvectionDecay:
     # ==========================================================
     def _apply_boundary_conditions_concentration(self):
 
-        alpha_x = self.__wall_deposition * self.__d[0] / self.__diffusion_coefficient[0]
-        alpha_y = self.__wall_deposition * self.__d[1] / self.__diffusion_coefficient[1]
-        alpha_z = self.__wall_deposition * self.__d[2] / self.__diffusion_coefficient[2]
+        # =====================================================
+        # Parámetros Robin
+        # =====================================================
 
-        # ======================================
-        # Robin BC:
-        #
-        # -D dC/dn = vd C
-        # ======================================
+        alpha_x_wall = (
+            self.__wall_deposition
+            * self.__d[0]
+            / self.__diffusion_coefficient[0]
+        )
 
-        self.__concentration[0,:,:] = self.__concentration[1,:,:] / (1 + alpha_x)
-        self.__concentration[-1,:,:] = self.__concentration[-2,:,:] / (1 + alpha_x)
+        alpha_y_wall = (
+            self.__wall_deposition
+            * self.__d[1]
+            / self.__diffusion_coefficient[1]
+        )
 
-        self.__concentration[:,0,:] = self.__concentration[:,1,:] / (1 + alpha_y)
-        self.__concentration[:,-1,:] = self.__concentration[:,-2,:] / (1 + alpha_y)
+        alpha_z_wall = (
+            self.__wall_deposition
+            * self.__d[2]
+            / self.__diffusion_coefficient[2]
+        )
 
-        self.__concentration[:,:,0] = self.__concentration[:,:,1] / (1 + alpha_z)
-        self.__concentration[:,:,-1] = self.__concentration[:,:,-2] / (1 + alpha_z)
+        alpha_x_out = (
+            self.__outlet_velocity
+            * self.__d[0]
+            / self.__diffusion_coefficient[0]
+        )
+
+        alpha_y_out = (
+            self.__outlet_velocity
+            * self.__d[1]
+            / self.__diffusion_coefficient[1]
+        )
+
+        alpha_z_out = (
+            self.__outlet_velocity
+            * self.__d[2]
+            / self.__diffusion_coefficient[2]
+        )
+
+        # =====================================================
+        # XMIN
+        # =====================================================
+
+        inlet_mask = self.__ventilation_masks["xmin_in"][0,:,:]
+        outlet_mask = self.__ventilation_masks["xmin_out"][0,:,:]
+
+        wall_mask = ~(inlet_mask | outlet_mask)
+
+        # pared sólida
+        self.__concentration[0,:,:][wall_mask] = (
+            self.__concentration[1,:,:][wall_mask]
+            /(1 + alpha_x_wall)
+        )
+
+        # impulsión
+        self.__concentration[0,:,:][inlet_mask] = (
+            self.__inlet_concentration
+        )
+
+        # extracción
+        self.__concentration[0,:,:][outlet_mask] = (
+            self.__concentration[1,:,:][outlet_mask]
+            /(1 + alpha_x_out)
+        )
+
+        # =====================================================
+        # XMAX
+        # =====================================================
+
+        inlet_mask = self.__ventilation_masks["xmax_in"][-1,:,:]
+        outlet_mask = self.__ventilation_masks["xmax_out"][-1,:,:]
+
+        wall_mask = ~(inlet_mask | outlet_mask)
+
+        self.__concentration[-1,:,:][wall_mask] = (
+            self.__concentration[-2,:,:][wall_mask]
+            /(1 + alpha_x_wall)
+        )
+
+        self.__concentration[-1,:,:][inlet_mask] = (
+            self.__inlet_concentration
+        )
+
+        self.__concentration[-1,:,:][outlet_mask] = (
+            self.__concentration[-2,:,:][outlet_mask]
+            /(1 + alpha_x_out)
+        )
+
+        # =====================================================
+        # YMIN
+        # =====================================================
+
+        inlet_mask = self.__ventilation_masks["ymin_in"][:,0,:]
+        outlet_mask = self.__ventilation_masks["ymin_out"][:,0,:]
+
+        wall_mask = ~(inlet_mask | outlet_mask)
+
+        self.__concentration[:,0,:][wall_mask] = (
+            self.__concentration[:,1,:][wall_mask]
+            /(1 + alpha_y_wall)
+        )
+
+        self.__concentration[:,0,:][inlet_mask] = (
+            self.__inlet_concentration
+        )
+
+        self.__concentration[:,0,:][outlet_mask] = (
+            self.__concentration[:,1,:][outlet_mask]
+            /(1 + alpha_y_out)
+        )
+
+        # =====================================================
+        # YMAX
+        # =====================================================
+
+        inlet_mask = self.__ventilation_masks["ymax_in"][:,-1,:]
+        outlet_mask = self.__ventilation_masks["ymax_out"][:,-1,:]
+
+        wall_mask = ~(inlet_mask | outlet_mask)
+
+        self.__concentration[:,-1,:][wall_mask] = (
+            self.__concentration[:,-2,:][wall_mask]
+            /(1 + alpha_y_wall)
+        )
+
+        self.__concentration[:,-1,:][inlet_mask] = (
+            self.__inlet_concentration
+        )
+
+        self.__concentration[:,-1,:][outlet_mask] = (
+            self.__concentration[:,-2,:][outlet_mask]
+            /(1 + alpha_y_out)
+        )
+
+        # =====================================================
+        # ZMIN
+        # =====================================================
+
+        inlet_mask = self.__ventilation_masks["zmin_in"][:,:,0]
+        outlet_mask = self.__ventilation_masks["zmin_out"][:,:,0]
+
+        wall_mask = ~(inlet_mask | outlet_mask)
+
+        self.__concentration[:,:,0][wall_mask] = (
+            self.__concentration[:,:,1][wall_mask]
+            /(1 + alpha_z_wall)
+        )
+
+        self.__concentration[:,:,0][inlet_mask] = (
+            self.__inlet_concentration
+        )
+
+        self.__concentration[:,:,0][outlet_mask] = (
+            self.__concentration[:,:,1][outlet_mask]
+            /(1 + alpha_z_out)
+        )
+
+        # =====================================================
+        # ZMAX
+        # =====================================================
+
+        inlet_mask = self.__ventilation_masks["zmax_in"][:,:,-1]
+        outlet_mask = self.__ventilation_masks["zmax_out"][:,:,-1]
+
+        wall_mask = ~(inlet_mask | outlet_mask)
+
+        self.__concentration[:,:,-1][wall_mask] = (
+            self.__concentration[:,:,-2][wall_mask]
+            /(1 + alpha_z_wall)
+        )
+
+        self.__concentration[:,:,-1][inlet_mask] = (
+            self.__inlet_concentration
+        )
+
+        self.__concentration[:,:,-1][outlet_mask] = (
+            self.__concentration[:,:,-2][outlet_mask]
+            /(1 + alpha_z_out)
+        )
 
     # ==========================================================
     # Fuentes
@@ -402,46 +736,58 @@ class IndoorsDiffusionAdvectionDecay:
 
         return self.__saved_fields
 
-    def animate(self, z=None):
-
-        if z is None:
-            z = self.N[2] // 2
-
+    def animate(self, z_values=None):
         times = sorted(self.__saved_fields.keys())
 
-        fig, ax = plt.subplots(figsize=(8,6))
+        # Seleccionar 6 valores de z si no se especifican
+        if z_values is None:
+            z_values = np.linspace(
+                0,
+                self.__N[2] - 1,
+                6,
+                dtype=int
+            )
+
+        fig, axes = plt.subplots(2, 3, figsize=(12, 8))
+        axes = axes.ravel()
 
         first = self.__saved_fields[times[0]]
 
-        im = ax.imshow(
-            first[:,:,z].T,
-            origin='lower',
-            extent=[0,self.__N[0],0,self.__N[1]],
-            animated=True
-        )
+        ims = []
+        for ax, z in zip(axes, z_values):
+            im = ax.imshow(
+                first[:, :, z].T,
+                origin='lower',
+                extent=[0, self.__N[0], 0, self.__N[1]],
+                animated=True
+            )
+            ax.set_title(f"z = {z}")
+            fig.colorbar(im, ax=ax)
+            ims.append(im)
 
-        plt.colorbar(im)
+        suptitle = fig.suptitle(f"t = {times[0]:.2f} s")
 
         def update(frame):
-
             t = times[frame]
 
-            im.set_array(
-                self.__saved_fields[t][:,:,z].T
-            )
+            for im, z in zip(ims, z_values):
+                im.set_array(
+                    self.__saved_fields[t][:, :, z].T
+                )
 
-            ax.set_title(f"t = {t:.2f} s")
+            suptitle.set_text(f"t = {t:.2f} s")
 
-            return [im]
+            return ims
 
-        ani = FuncAnimation(
+        animation = FuncAnimation(
             fig,
             update,
             frames=len(times),
-            interval=100
+            interval=100,
+            blit=False
         )
 
+        plt.tight_layout()
         plt.show()
 
-        return ani
-
+        return animation

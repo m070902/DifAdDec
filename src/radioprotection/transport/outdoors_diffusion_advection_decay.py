@@ -45,9 +45,6 @@ class OutdoorsDiffusionAdvectionDecay:
         self.__concentration = np.zeros(self.__N)
         self.__saved_fields = {}
 
-        #Pensar si realmente merece la pena utilizar un campo de velocidades usando la función vista en el otro lado
-        #self.__velocity = self._build_velocity_field()
-
         if (diffusion_comprobation(diffusion_coefficient, d) == False) or (CFL_comprobation(initial_velocity, d) == False):
             raise ValueError("The provided values for the function 'diffusion_advection_decay' do not follow the stability conditions of the equation.")
 

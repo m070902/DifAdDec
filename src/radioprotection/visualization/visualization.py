@@ -4,7 +4,7 @@ from matplotlib import cm
 import matplotlib.colors as mcolors
 from matplotlib.colors import Normalize
 
-def check_provided_time(time, duration, concentration):
+def check_provided_time(time: float, duration: float, concentration: dict[str, list[float]]) -> float:
     if time is None:
         time = len(concentration) - 1
         return  time
@@ -18,11 +18,11 @@ def check_provided_time(time, duration, concentration):
         )
     return time
 
-def check_number_of_Z_to_check(vertical_axis, levels):
+def check_number_of_Z_to_check(vertical_axis: str, levels: int):
     if len(levels) > 6:
         raise ValueError(f"6 or less values of {vertical_axis} must be provided.")
 
-def define_X_Y_values(vertical_axis, n):
+def define_X_Y_values(vertical_axis: str, n: tuple[float, float, float]) -> tuple[list[float], list[float], list[str, str]]:
     if vertical_axis == "x":
         y = np.arange(n[1])
         z = np.arange(n[2])
@@ -42,7 +42,7 @@ def define_X_Y_values(vertical_axis, n):
         raise ValueError("The provided string for vertical axis is not valid.")
     return X, Y, aux_axis
 
-def stablish_maximum_concentration(time, concentration):
+def stablish_maximum_concentration(time: float, concentration: dict[str, list[float]]):
     return np.max(concentration[f"{time}"])
 
 def define_initial_plotting_parameters():
@@ -50,7 +50,7 @@ def define_initial_plotting_parameters():
     fig = plt.figure(figsize=(20, 10))
     return fig, norm
 
-def define_Z_values(concentration, vertical_axis, concentration_max, time, level):
+def define_Z_values(concentration: dict[str, list[float]], vertical_axis: str, concentration_max:  float, time: float, level: int):
     if vertical_axis == "x":
         Z = concentration[f'{time}'][level-1, :, :].T / concentration_max
     elif vertical_axis == "y":
