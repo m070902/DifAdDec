@@ -14,53 +14,57 @@ from radioprotection.utils import (
         lambda_for_species
 )
 
-class IndoorsDiffusionAdvectionDecay:
+from radioprotection.visualization import (
+    check_provided_time,
+    check_number_of_Z_to_check,
+    define_X_Y_values,
+    stablish_maximum_concentration,
+    define_initial_plotting_parameters,
+    define_Z_values,
+    plot_3d,
+    plot_2d,
+    define_color_bar,
+    plot_title,
+    show_plot
+)
 
+from .diffusion_advection_decay import DiffusionAdvectionDecay
+
+class IndoorsDiffusionAdvectionDecay(DiffusionAdvectionDecay):
     def __init__(
         self,
-        grid_shape=(50, 50, 30),
+        grid_shape=(50, 50, 50),
         d=(0.5, 0.5, 0.5, 0.1),
-        total_time=100.0,
+        total_time=1000.0,
         diffusion_coefficient=(1e-3, 1e-3, 1e-3),   # m²/s
-        initial_velocity=(0.05, 0.0, 0.0),      # m/s
         species_name = "U-234",
-        source_positions=[(25, 25, 15)],
-        emission_rate=1.0,
+        source_positions=[(25, 25, 25)],
+        emission_rate=3.0,
         wall_deposition=1e-4,           # m/s
         inlet_regions=None,
         outlet_regions=None,
-        inlet_velocity=0.0,
-        outlet_velocity=0.0,
+        inlet_wind_velocity=0.0,
+        outlet_wind_velocity=0.0,
         inlet_concentration=0.0
     ):
+        super().__init__(grid_shape, d, total_time, diffusion_coefficient, species_name, source_positions, emission_rate)
 
-        self.__N = grid_shape
-        self.__d = d
-        self.__diffusion_coefficient = diffusion_coefficient
-        self.__initial_velocity = initial_velocity
-        self.__species_name = species_name
-        self.__lamda = lambda_for_species(species_name)
-        self.__source_positions = source_positions
-        self.__emission_rate = emission_rate
-        self.__total_time = total_time
         self.__wall_deposition = wall_deposition
-        self.__concentration = np.zeros(self.__N)
-        self.__saved_fields = {}
 
         self.__inlet_regions = inlet_regions or []
         self.__outlet_regions = outlet_regions or []
 
-        self.__inlet_velocity = inlet_velocity
-        self.__outlet_velocity = outlet_velocity
+        self.__inlet_wind_velocity = inlet_wind_velocity
+        self.__outlet_wind_velocity = outlet_wind_velocity
         self.__inlet_concentration = inlet_concentration
 
         self.__ventilation_masks = (
         self._build_ventilation_masks()
         )
 
-        self.__velocity = self._build_velocity_field_for_closed_room()
+        self.__wind_velocity = self._build_wind_velocity_field_for_closed_room()
 
-        if (diffusion_comprobation(self.__diffusion_coefficient, d) == False) or (CFL_comprobation(self.__velocity, d) == False):
+        if (diffusion_comprobation(self._diffusion_coefficient, self._d) == False) or (CFL_comprobation(self.__wind_velocity, self._d) == False):
             raise ValueError("The provided values for the function 'diffusion_advection_decay' do not follow the stability conditions of the equation.")
 
 
@@ -68,23 +72,23 @@ class IndoorsDiffusionAdvectionDecay:
 
         masks = {
 
-            "xmin_in": np.zeros(self.__N,dtype=bool),
-            "xmin_out": np.zeros(self.__N,dtype=bool),
+            "xmin_in": np.zeros(self._N,dtype=bool),
+            "xmin_out": np.zeros(self._N,dtype=bool),
 
-            "xmax_in": np.zeros(self.__N,dtype=bool),
-            "xmax_out": np.zeros(self.__N,dtype=bool),
+            "xmax_in": np.zeros(self._N,dtype=bool),
+            "xmax_out": np.zeros(self._N,dtype=bool),
 
-            "ymin_in": np.zeros(self.__N,dtype=bool),
-            "ymin_out": np.zeros(self.__N,dtype=bool),
+            "ymin_in": np.zeros(self._N,dtype=bool),
+            "ymin_out": np.zeros(self._N,dtype=bool),
 
-            "ymax_in": np.zeros(self.__N,dtype=bool),
-            "ymax_out": np.zeros(self.__N,dtype=bool),
+            "ymax_in": np.zeros(self._N,dtype=bool),
+            "ymax_out": np.zeros(self._N,dtype=bool),
 
-            "zmin_in": np.zeros(self.__N,dtype=bool),
-            "zmin_out": np.zeros(self.__N,dtype=bool),
+            "zmin_in": np.zeros(self._N,dtype=bool),
+            "zmin_out": np.zeros(self._N,dtype=bool),
 
-            "zmax_in": np.zeros(self.__N,dtype=bool),
-            "zmax_out": np.zeros(self.__N,dtype=bool)
+            "zmax_in": np.zeros(self._N,dtype=bool),
+            "zmax_out": np.zeros(self._N,dtype=bool)
         }
 
         for reg in self.__inlet_regions:
@@ -229,215 +233,162 @@ class IndoorsDiffusionAdvectionDecay:
 
         return masks
 
-    def _build_velocity_field_for_closed_room(self):
-        vx = np.full((self.__N), self.__initial_velocity[0])
-        vy = np.full((self.__N), self.__initial_velocity[1])
-        vz = np.full((self.__N), self.__initial_velocity[2])
+    def _build_wind_velocity_field_for_closed_room(self):
+        Nx, Ny, Nz = self._N
+        dx, dy, dz = self._d[0], self._d[1], self._d[2]
+        total_nodes = Nx * Ny * Nz
 
-        # Distancia normalizada a paredes
-        x = np.linspace(0, 1, self.__N[0])
-        y = np.linspace(0, 1, self.__N[1])
-        z = np.linspace(0, 1, self.__N[2])
+        # Matriz del sistema en formato LIL para construcción eficiente
+        A = lil_matrix((total_nodes, total_nodes), dtype=float)
+        b = np.zeros(total_nodes)
 
-        fx = np.sin(np.pi * x)
-        fy = np.sin(np.pi * y)
-        fz = np.sin(np.pi * z)
+        # Precomputación de coeficientes espaciales
+        idx2 = 1.0 / (dx**2)
+        idy2 = 1.0 / (dy**2)
+        idz2 = 1.0 / (dz**2)
 
-        FX, FY, FZ = np.meshgrid(fx, fy, fz, indexing='ij')
+        # Mapeo de índices 3D a 1D
+        def get_index(i, j, k):
+            return i + j * Nx + k * Nx * Ny
 
-        # Perfil suave tipo no-slip
-        vx *= FX
-        vy *= FY
-        vz *= FZ
+        # Recuperar máscaras completas combinadas para simplificar la lógica de frontera
+        m = self.__ventilation_masks
 
-        for inlet in self.__inlet_regions:
+        for k in range(Nz):
+            for j in range(Ny):
+                for i in range(Nx):
+                    idx = get_index(i, j, k)
 
-            if inlet["wall"] == "xmin":
+                    # Determinar si el nodo está en alguna frontera externa
+                    is_xmin = (i == 0)
+                    is_xmax = (i == Nx - 1)
+                    is_ymin = (j == 0)
+                    is_ymax = (j == Ny - 1)
+                    is_zmin = (k == 0)
+                    is_zmax = (k == Nz - 1)
 
-                y0,y1 = inlet["y"]
-                z0,z1 = inlet["z"]
+                    if is_xmin or is_xmax or is_ymin or is_ymax or is_zmin or is_zmax:
+                        # Ecuación de frontera (Neumann: dphi/dn = v_normal)
+                        # Usamos aproximaciones de diferencias finitas de primer orden para la frontera
+                        if is_xmin:
+                            A[idx, idx] = -1.0 / dx
+                            A[idx, get_index(i + 1, j, k)] = 1.0 / dx
+                            if m["xmin_in"][i, j, k]:
+                                b[idx] = self.__inlet_wind_velocity
+                            elif m["xmin_out"][i, j, k]:
+                                b[idx] = -self.__outlet_wind_velocity
+                            else:
+                                b[idx] = 0.0
 
-                vx[
-                    0:30,
-                    y0:y1,
-                    z0:z1
-                ] += self.__inlet_velocity
+                        elif is_xmax:
+                            A[idx, idx] = 1.0 / dx
+                            A[idx, get_index(i - 1, j, k)] = -1.0 / dx
+                            if m["xmax_in"][i, j, k]:
+                                b[idx] = -self.__inlet_wind_velocity
+                            elif m["xmax_out"][i, j, k]:
+                                b[idx] = self.__outlet_wind_velocity
+                            else:
+                                b[idx] = 0.0
 
-            if inlet["wall"] == "xmax":
+                        elif is_ymin:
+                            A[idx, idx] = -1.0 / dy
+                            A[idx, get_index(i, j + 1, k)] = 1.0 / dy
+                            if m["ymin_in"][i, j, k]:
+                                b[idx] = self.__inlet_wind_velocity
+                            elif m["ymin_out"][i, j, k]:
+                                b[idx] = -self.__outlet_wind_velocity
+                            else:
+                                b[idx] = 0.0
 
-                y0,y1 = inlet["y"]
-                z0,z1 = inlet["z"]
+                        elif is_ymax:
+                            A[idx, idx] = 1.0 / dy
+                            A[idx, get_index(i, j - 1, k)] = -1.0 / dy
+                            if m["ymax_in"][i, j, k]:
+                                b[idx] = -self.__inlet_wind_velocity
+                            elif m["ymax_out"][i, j, k]:
+                                b[idx] = self.__outlet_wind_velocity
+                            else:
+                                b[idx] = 0.0
 
-                vx[
-                    0:30,
-                    y0:y1,
-                    z0:z1
-                ] -= self.__inlet_velocity
+                        elif is_zmin:
+                            A[idx, idx] = -1.0 / dz
+                            A[idx, get_index(i, j, k + 1)] = 1.0 / dz
+                            if m["zmin_in"][i, j, k]:
+                                b[idx] = self.__inlet_wind_velocity
+                            elif m["zmin_out"][i, j, k]:
+                                b[idx] = -self.__outlet_wind_velocity
+                            else:
+                                b[idx] = 0.0
 
-            if inlet["wall"] == "ymin":
+                        elif is_zmax:
+                            A[idx, idx] = 1.0 / dz
+                            A[idx, get_index(i, j, k - 1)] = -1.0 / dz
+                            if m["zmax_in"][i, j, k]:
+                                b[idx] = -self.__inlet_wind_velocity
+                            elif m["zmax_out"][i, j, k]:
+                                b[idx] = self.__outlet_wind_velocity
+                            else:
+                                b[idx] = 0.0
+                    else:
+                        # Nodos internos: Ecuación de Laplace (Stencil de 7 puntos)
+                        A[idx, idx] = -2.0 * (idx2 + idy2 + idz2)
+                        A[idx, get_index(i - 1, j, k)] = idx2
+                        A[idx, get_index(i + 1, j, k)] = idx2
+                        A[idx, get_index(i, j - 1, k)] = idy2
+                        A[idx, get_index(i, j + 1, k)] = idy2
+                        A[idx, get_index(i, j, k - 1)] = idz2
+                        A[idx, get_index(i, j, k + 1)] = idz2
+                        b[idx] = 0.0
 
-                x0,x1 = inlet["x"]
-                z0,z1 = inlet["z"]
+        # Al ser un problema puramente de Neumann, el potencial está definido salvo una constante.
+        # Fijamos el potencial del primer nodo para asegurar unicidad en la solución del sistema.
+        A[0, :] = 0.0
+        A[0, 0] = 1.0
+        b[0] = 0.0
 
-                vy[
-                    x0:x1,
-                    0:30,
-                    z0:z1
-                ] += self.__inlet_velocity
+        # Conversión a formato CSR para resolución eficiente
+        A = A.tocsr()
 
-            if inlet["wall"] == "ymax":
+        # Resolver el sistema lineal
+        phi_flat = spsolve(A, b)
+        phi = phi_flat.reshape((Nx, Ny, Nz))
 
-                x0,x1 = inlet["x"]
-                z0,z1 = inlet["z"]
+        # Calcular el campo de velocidades: V = grad(phi) utilizando diferencias centrales
+        vx = np.zeros((Nx, Ny, Nz))
+        vy = np.zeros((Nx, Ny, Nz))
+        vz = np.zeros((Nx, Ny, Nz))
 
-                vy[
-                    x0:x1,
-                    0:30,
-                    z0:z1
-                ] -= self.__inlet_velocity
+        vx[1:-1, :, :] = (phi[2:, :, :] - phi[:-2, :, :]) / (2.0 * dx)
+        vy[:, 1:-1, :] = (phi[:, 2:, :] - phi[:, :-2, :]) / (2.0 * dy)
+        vz[:, :, 1:-1] = (phi[:, :, 2:] - phi[:, :, :-2]) / (2.0 * dz)
 
-            if inlet["wall"] == "zmin":
-
-                x0,x1 = inlet["x"]
-                y0,y1 = inlet["y"]
-
-                vz[
-                    x0:x1,
-                    y0:y1,
-                    0:20
-                ] += self.__inlet_velocity
-
-            if inlet["wall"] == "zmax":
-
-                x0,x1 = inlet["x"]
-                y0,y1 = inlet["y"]
-
-                vz[
-                    x0:x1,
-                    y0:y1,
-                    0:20
-                ] -= self.__inlet_velocity
-
-        for outlet in self.__outlet_regions:
-
-            if outlet["wall"] == "xmin":
-
-                y0,y1 = outlet["y"]
-                z0,z1 = outlet["z"]
-
-                vx[
-                    -30:,
-                    y0:y1,
-                    z0:z1
-                ] += self.__outlet_velocity
-
-            if outlet["wall"] == "xmax":
-
-                y0,y1 = outlet["y"]
-                z0,z1 = outlet["z"]
-
-                vx[
-                    -30:,
-                    y0:y1,
-                    z0:z1
-                ] -= self.__outlet_velocity
-
-            if outlet["wall"] == "ymin":
-
-                x0,x1 = outlet["x"]
-                z0,z1 = outlet["z"]
-
-                vy[
-                    x0:x1,
-                    -30:,
-                    z0:z1
-                ] += self.__outlet_velocity
-
-            if outlet["wall"] == "ymax":
-
-                x0,x1 = outlet["x"]
-                z0,z1 = outlet["z"]
-
-                vy[
-                    x0:x1,
-                    -30:,
-                    z0:z1
-                ] -= self.__outlet_velocity
-
-            if outlet["wall"] == "zmin":
-
-                x0,x1 = outlet["x"]
-                y0,y1 = outlet["y"]
-
-                vz[
-                    x0:x1,
-                    y0:y1,
-                    -20:
-                ] += self.__outlet_velocity
-
-            if outlet["wall"] == "zmax":
-
-                x0,x1 = outlet["x"]
-                y0,y1 = outlet["y"]
-
-                vz[
-                    x0:x1,
-                    y0:y1,
-                    -20:
-                ] -= self.__outlet_velocity
+        # Condiciones de contorno para los componentes de velocidad en los extremos externos
+        vx[0, :, :] = vx[1, :, :]
+        vx[-1, :, :] = vx[-2, :, :]
+        vy[:, 0, :] = vy[:, 1, :]
+        vy[:, -1, :] = vy[:, -2, :]
+        vz[:, :, 0] = vz[:, :, 1]
+        vz[:, :, -1] = vz[:, :, -2]
 
         return [vx, vy, vz]
 
-    def _compute_diffusion(self, concentration_aux: dict[str, list[float]]):
-
-        return (
-            self.__diffusion_coefficient[0] * (
-                concentration_aux[2:,1:-1,1:-1]
-                - 2*concentration_aux[1:-1,1:-1,1:-1]
-                + concentration_aux[:-2,1:-1,1:-1]
-            ) / self.__d[0]**2
-
-            +
-
-            self.__diffusion_coefficient[1] * (
-                concentration_aux[1:-1,2:,1:-1]
-                - 2*concentration_aux[1:-1,1:-1,1:-1]
-                + concentration_aux[1:-1,:-2,1:-1]
-            ) / self.__d[1]**2
-
-            +
-
-            self.__diffusion_coefficient[2] * (
-                concentration_aux[1:-1,1:-1,2:]
-                - 2*concentration_aux[1:-1,1:-1,1:-1]
-                + concentration_aux[1:-1,1:-1,:-2]
-            ) / self.__d[2]**2
-        )
-
-    # ==========================================================
-    # Advección UPWIND
-    # ==========================================================
     def _compute_advection(self, concentration_aux: dict[str, list[float]]):
 
         adv = np.zeros_like(concentration_aux[1:-1,1:-1,1:-1])
 
-        vx = self.__velocity[0][1:-1,1:-1,1:-1]
-        vy = self.__velocity[1][1:-1,1:-1,1:-1]
-        vz = self.__velocity[2][1:-1,1:-1,1:-1]
-
-        # ======================================
-        # X
-        # ======================================
+        vx = self.__wind_velocity[0][1:-1,1:-1,1:-1]
+        vy = self.__wind_velocity[1][1:-1,1:-1,1:-1]
+        vz = self.__wind_velocity[2][1:-1,1:-1,1:-1]
 
         dCdx_backward = (
             concentration_aux[1:-1,1:-1,1:-1]
             - concentration_aux[:-2,1:-1,1:-1]
-        ) / self.__d[0]
+        ) / self._d[0]
 
         dCdx_forward = (
             concentration_aux[2:,1:-1,1:-1]
             - concentration_aux[1:-1,1:-1,1:-1]
-        ) / self.__d[0]
+        ) / self._d[0]
 
         adv += np.where(
             vx >= 0,
@@ -445,38 +396,31 @@ class IndoorsDiffusionAdvectionDecay:
             vx * dCdx_forward
         )
 
-        # ======================================
-        # Y
-        # ======================================
-
         dCdy_backward = (
             concentration_aux[1:-1,1:-1,1:-1]
             - concentration_aux[1:-1,:-2,1:-1]
-        ) / self.__d[1]
+        ) / self._d[1]
 
         dCdy_forward = (
             concentration_aux[1:-1,2:,1:-1]
             - concentration_aux[1:-1,1:-1,1:-1]
-        ) / self.__d[1]
+        ) / self._d[1]
+
         adv += np.where(
             vy >= 0,
             vy * dCdy_backward,
             vy * dCdy_forward
         )
 
-        # ======================================
-        # Z
-        # ======================================
-
         dCdz_backward = (
             concentration_aux[1:-1,1:-1,1:-1]
             - concentration_aux[1:-1,1:-1,:-2]
-        ) / self.__d[2]
+        ) / self._d[2]
 
         dCdz_forward = (
             concentration_aux[1:-1,1:-1,2:]
             - concentration_aux[1:-1,1:-1,1:-1]
-        ) / self.__d[2]
+        ) / self._d[2]
 
         adv += np.where(
             vz >= 0,
@@ -486,264 +430,246 @@ class IndoorsDiffusionAdvectionDecay:
 
         return adv
 
-    # ==========================================================
-    # Condiciones de contorno
-    # ==========================================================
     def _apply_boundary_conditions_concentration(self):
-
-        # =====================================================
-        # Parámetros Robin
-        # =====================================================
 
         alpha_x_wall = (
             self.__wall_deposition
-            * self.__d[0]
-            / self.__diffusion_coefficient[0]
+            * self._d[0]
+            / self._diffusion_coefficient[0]
         )
 
         alpha_y_wall = (
             self.__wall_deposition
-            * self.__d[1]
-            / self.__diffusion_coefficient[1]
+            * self._d[1]
+            / self._diffusion_coefficient[1]
         )
 
         alpha_z_wall = (
             self.__wall_deposition
-            * self.__d[2]
-            / self.__diffusion_coefficient[2]
+            * self._d[2]
+            / self._diffusion_coefficient[2]
         )
 
         alpha_x_out = (
-            self.__outlet_velocity
-            * self.__d[0]
-            / self.__diffusion_coefficient[0]
+            self.__outlet_wind_velocity
+            * self._d[0]
+            / self._diffusion_coefficient[0]
         )
 
         alpha_y_out = (
-            self.__outlet_velocity
-            * self.__d[1]
-            / self.__diffusion_coefficient[1]
+            self.__outlet_wind_velocity
+            * self._d[1]
+            / self._diffusion_coefficient[1]
         )
 
         alpha_z_out = (
-            self.__outlet_velocity
-            * self.__d[2]
-            / self.__diffusion_coefficient[2]
+            self.__outlet_wind_velocity
+            * self._d[2]
+            / self._diffusion_coefficient[2]
         )
-
-        # =====================================================
-        # XMIN
-        # =====================================================
 
         inlet_mask = self.__ventilation_masks["xmin_in"][0,:,:]
         outlet_mask = self.__ventilation_masks["xmin_out"][0,:,:]
 
         wall_mask = ~(inlet_mask | outlet_mask)
 
-        # pared sólida
-        self.__concentration[0,:,:][wall_mask] = (
-            self.__concentration[1,:,:][wall_mask]
+        self._concentration[0,:,:][wall_mask] = (
+            self._concentration[1,:,:][wall_mask]
             /(1 + alpha_x_wall)
         )
 
-        # impulsión
-        self.__concentration[0,:,:][inlet_mask] = (
+        self._concentration[0,:,:][inlet_mask] = (
             self.__inlet_concentration
         )
 
-        # extracción
-        self.__concentration[0,:,:][outlet_mask] = (
-            self.__concentration[1,:,:][outlet_mask]
+        self._concentration[0,:,:][outlet_mask] = (
+            self._concentration[1,:,:][outlet_mask]
             /(1 + alpha_x_out)
         )
-
-        # =====================================================
-        # XMAX
-        # =====================================================
 
         inlet_mask = self.__ventilation_masks["xmax_in"][-1,:,:]
         outlet_mask = self.__ventilation_masks["xmax_out"][-1,:,:]
 
         wall_mask = ~(inlet_mask | outlet_mask)
 
-        self.__concentration[-1,:,:][wall_mask] = (
-            self.__concentration[-2,:,:][wall_mask]
+        self._concentration[-1,:,:][wall_mask] = (
+            self._concentration[-2,:,:][wall_mask]
             /(1 + alpha_x_wall)
         )
 
-        self.__concentration[-1,:,:][inlet_mask] = (
+        self._concentration[-1,:,:][inlet_mask] = (
             self.__inlet_concentration
         )
 
-        self.__concentration[-1,:,:][outlet_mask] = (
-            self.__concentration[-2,:,:][outlet_mask]
+        self._concentration[-1,:,:][outlet_mask] = (
+            self._concentration[-2,:,:][outlet_mask]
             /(1 + alpha_x_out)
         )
-
-        # =====================================================
-        # YMIN
-        # =====================================================
 
         inlet_mask = self.__ventilation_masks["ymin_in"][:,0,:]
         outlet_mask = self.__ventilation_masks["ymin_out"][:,0,:]
 
         wall_mask = ~(inlet_mask | outlet_mask)
 
-        self.__concentration[:,0,:][wall_mask] = (
-            self.__concentration[:,1,:][wall_mask]
+        self._concentration[:,0,:][wall_mask] = (
+            self._concentration[:,1,:][wall_mask]
             /(1 + alpha_y_wall)
         )
 
-        self.__concentration[:,0,:][inlet_mask] = (
+        self._concentration[:,0,:][inlet_mask] = (
             self.__inlet_concentration
         )
 
-        self.__concentration[:,0,:][outlet_mask] = (
-            self.__concentration[:,1,:][outlet_mask]
+        self._concentration[:,0,:][outlet_mask] = (
+            self._concentration[:,1,:][outlet_mask]
             /(1 + alpha_y_out)
         )
-
-        # =====================================================
-        # YMAX
-        # =====================================================
 
         inlet_mask = self.__ventilation_masks["ymax_in"][:,-1,:]
         outlet_mask = self.__ventilation_masks["ymax_out"][:,-1,:]
 
         wall_mask = ~(inlet_mask | outlet_mask)
 
-        self.__concentration[:,-1,:][wall_mask] = (
-            self.__concentration[:,-2,:][wall_mask]
+        self._concentration[:,-1,:][wall_mask] = (
+            self._concentration[:,-2,:][wall_mask]
             /(1 + alpha_y_wall)
         )
 
-        self.__concentration[:,-1,:][inlet_mask] = (
+        self._concentration[:,-1,:][inlet_mask] = (
             self.__inlet_concentration
         )
 
-        self.__concentration[:,-1,:][outlet_mask] = (
-            self.__concentration[:,-2,:][outlet_mask]
+        self._concentration[:,-1,:][outlet_mask] = (
+            self._concentration[:,-2,:][outlet_mask]
             /(1 + alpha_y_out)
         )
-
-        # =====================================================
-        # ZMIN
-        # =====================================================
 
         inlet_mask = self.__ventilation_masks["zmin_in"][:,:,0]
         outlet_mask = self.__ventilation_masks["zmin_out"][:,:,0]
 
         wall_mask = ~(inlet_mask | outlet_mask)
 
-        self.__concentration[:,:,0][wall_mask] = (
-            self.__concentration[:,:,1][wall_mask]
+        self._concentration[:,:,0][wall_mask] = (
+            self._concentration[:,:,1][wall_mask]
             /(1 + alpha_z_wall)
         )
 
-        self.__concentration[:,:,0][inlet_mask] = (
+        self._concentration[:,:,0][inlet_mask] = (
             self.__inlet_concentration
         )
 
-        self.__concentration[:,:,0][outlet_mask] = (
-            self.__concentration[:,:,1][outlet_mask]
+        self._concentration[:,:,0][outlet_mask] = (
+            self._concentration[:,:,1][outlet_mask]
             /(1 + alpha_z_out)
         )
-
-        # =====================================================
-        # ZMAX
-        # =====================================================
 
         inlet_mask = self.__ventilation_masks["zmax_in"][:,:,-1]
         outlet_mask = self.__ventilation_masks["zmax_out"][:,:,-1]
 
         wall_mask = ~(inlet_mask | outlet_mask)
 
-        self.__concentration[:,:,-1][wall_mask] = (
-            self.__concentration[:,:,-2][wall_mask]
+        self._concentration[:,:,-1][wall_mask] = (
+            self._concentration[:,:,-2][wall_mask]
             /(1 + alpha_z_wall)
         )
 
-        self.__concentration[:,:,-1][inlet_mask] = (
+        self._concentration[:,:,-1][inlet_mask] = (
             self.__inlet_concentration
         )
 
-        self.__concentration[:,:,-1][outlet_mask] = (
-            self.__concentration[:,:,-2][outlet_mask]
+        self._concentration[:,:,-1][outlet_mask] = (
+            self._concentration[:,:,-2][outlet_mask]
             /(1 + alpha_z_out)
         )
 
-    # ==========================================================
-    # Fuentes
-    # ==========================================================
-    def _inject_sources(self):
-
-        for idx in self.__source_positions:
-            self.__concentration[idx] += self.__emission_rate * self.__d[3]
-
-    # ==========================================================
-    # STEP
-    # ==========================================================
     def _step_concentration(self):
 
-        concentration_aux = self.__concentration.copy()
+        concentration_aux = self._concentration.copy()
 
         diffusion = self._compute_diffusion(concentration_aux)
 
         advection = self._compute_advection(concentration_aux)
 
-        decay = self.__lamda * concentration_aux[1:-1,1:-1,1:-1]
+        decay = self._lamda * concentration_aux[1:-1,1:-1,1:-1]
 
-        self.__concentration[1:-1,1:-1,1:-1] = (
+        self._concentration[1:-1,1:-1,1:-1] = (
             concentration_aux[1:-1,1:-1,1:-1]
-            + self.__d[3] * diffusion
-            - self.__d[3] * advection
-            - self.__d[3] * decay
+            + self._d[3] * diffusion
+            - self._d[3] * advection
+            - self._d[3] * decay
         )
 
-        # evitar negativos numéricos
-        self.__concentration = np.maximum(self.__concentration, 0)
+        self._concentration = np.maximum(self._concentration, 0)
 
-        # BC
         self._apply_boundary_conditions_concentration()
 
-        # fuente
         self._inject_sources()
 
-    # ==========================================================
-    # SIMULACIÓN
-    # ==========================================================
     def run(self, save_every=100):
 
-        total_steps = int(self.__total_time / self.__d[3])
+        total_steps = int(self._total_time / self._d[3])
 
-        self.__saved_fields[0.0] = self.__concentration.copy()
+        self._saved_fields[0.0] = self._concentration.copy()
 
         for n in range(1, total_steps + 1):
 
-            #self._step_velocity()
+            current_time = n * self._d[3]
+
             self._step_concentration()
 
             if n % save_every == 0:
 
-                current_time = n * self.__d[3]
-
-                self.__saved_fields[current_time] = self.__concentration.copy()
+                self._saved_fields[current_time] = self._concentration.copy()
 
                 print(
                     f"t = {current_time:.2f} s | "
-                    f"max(C) = {np.max(self.__concentration):.5e}"
+                    f"max(C) = {np.max(self._concentration):.5e}"
                 )
 
-        return self.__saved_fields
+        return self._saved_fields
+
+    def spatial_visualization(self, visualization_type = "3d", vertical_axis = "z", levels = None, time = None):
+
+        time = check_provided_time(time, self._total_time, self._concentration)
+
+        check_number_of_Z_to_check(vertical_axis, levels)
+
+        X, Y, aux_axis = define_X_Y_values(vertical_axis, self._N)
+
+        concentration_max = stablish_maximum_concentration(time, self._concentration)
+
+        fig, norm = define_initial_plotting_parameters()
+
+        for i, level in enumerate(levels):
+
+            Z = define_Z_values(self._concentration, vertical_axis, concentration_max, time, level)
+
+            if (visualization_type=="3d"):
+                plot_3d(X, Y, Z, fig, norm, vertical_axis, level, aux_axis, concentration_max, vertical_axis_label=fr"Concentration ($\times$ ({concentration_max:.2e})$^{{-1}}$ Bq/m$^3$)", iteration = i)
+
+            elif (visualization_type == "2d"):
+                plot_2d(X, Y, Z, fig, norm, vertical_axis, level, aux_axis, iteration = i)
+
+            else:
+                raise ValueError("The provided string for visualization type is not valid.")
+
+        define_color_bar(fig, norm, concentration_max, vertical_axis_label = fr"Concentration ($\times$ ({concentration_max:.2e})$^{{-1}}$ Bq/m$^3$)")
+
+        plot_title(fig, f"Radioisotope = {self._species_name} | Visualization type = {visualization_type} | Instant = {time} s | Wind speed = {self.__wind_velocity} | Diffusion coefficient = {self._diffusion_coefficient}")
+
+        show_plot()
+
+
+    def provide_variables_hrtm(self):
+        return self._concentration, self._N, self.__wind_velocity, self._species_name, self._diffusion_coefficient, self.__time
 
     def animate(self, z_values=None):
-        times = sorted(self.__saved_fields.keys())
+        times = sorted(self._saved_fields.keys())
 
-        # Seleccionar 6 valores de z si no se especifican
         if z_values is None:
             z_values = np.linspace(
                 0,
-                self.__N[2] - 1,
+                self._N[2] - 1,
                 6,
                 dtype=int
             )
@@ -751,14 +677,14 @@ class IndoorsDiffusionAdvectionDecay:
         fig, axes = plt.subplots(2, 3, figsize=(12, 8))
         axes = axes.ravel()
 
-        first = self.__saved_fields[times[0]]
+        first = self._saved_fields[times[0]]
 
         ims = []
         for ax, z in zip(axes, z_values):
             im = ax.imshow(
                 first[:, :, z].T,
                 origin='lower',
-                extent=[0, self.__N[0], 0, self.__N[1]],
+                extent=[0, self._N[0], 0, self._N[1]],
                 animated=True
             )
             ax.set_title(f"z = {z}")
@@ -772,7 +698,7 @@ class IndoorsDiffusionAdvectionDecay:
 
             for im, z in zip(ims, z_values):
                 im.set_array(
-                    self.__saved_fields[t][:, :, z].T
+                    self._saved_fields[t][:, :, z].T
                 )
 
             suptitle.set_text(f"t = {t:.2f} s")

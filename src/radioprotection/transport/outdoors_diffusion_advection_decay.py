@@ -1,4 +1,8 @@
 import numpy as np
+import matplotlib.pyplot as plt
+from matplotlib.animation import FuncAnimation
+
+from .diffusion_advection_decay import DiffusionAdvectionDecay
 
 from radioprotection.utils import (
     diffusion_comprobation,
@@ -20,100 +24,156 @@ from radioprotection.visualization import (
     show_plot
 )
 
-class OutdoorsDiffusionAdvectionDecay:
-    def __init__(
-        self,
-        grid_shape=(50, 50, 30),
-        d=(0.5, 0.5, 0.5, 0.01),
-        total_time=100.0,
+class OutdoorsDiffusionAdvectionDecay(DiffusionAdvectionDecay):
+    def __init__(self,
+        wind_model,
+        grid_shape=(50, 50, 50),
+        d=(0.5, 0.5, 0.5, 0.1),
+        total_time=1000.0,
         diffusion_coefficient=(1e-3, 1e-3, 1e-3),   # m²/s
-        initial_velocity=(0.05, 0.0, 0.0),      # m/s
         species_name = "U-234",
-        source_positions=[(25, 25, 15)],
-        emission_rate=1.0,
-        ):
+        source_positions=[(25, 25, 25)],
+        emission_rate=3.0
+    ):
+        super().__init__(grid_shape, d, total_time, diffusion_coefficient, species_name, source_positions, emission_rate)
 
-        self.__N = grid_shape
-        self.__d = d
-        self.__diffusion_coefficient = diffusion_coefficient
-        self.__initial_velocity = initial_velocity
-        self.__species_name = species_name
-        self.__lamda = lambda_for_species(species_name)
-        self.__source_positions = source_positions
-        self.__emission_rate = emission_rate
-        self.__total_time = total_time
-        self.__concentration = np.zeros(self.__N)
-        self.__saved_fields = {}
+        self.__wind_model = wind_model
 
-        if (diffusion_comprobation(diffusion_coefficient, d) == False) or (CFL_comprobation(initial_velocity, d) == False):
-            raise ValueError("The provided values for the function 'diffusion_advection_decay' do not follow the stability conditions of the equation.")
+        #if (diffusion_comprobation(self._diffusion_coefficient, self._d) == False) or (CFL_comprobation(self.__wind_velocity, self._d) == False):
+        #    raise ValueError("The provided values for the function 'diffusion_advection_decay' do not follow the stability conditions of the equation.")
 
-    def forward_euler_method(self):
-            Dx, Dy, Dz = self.__diffusion_coefficient
-            lam = self.__half_life
-            dt = self.__d[3]
-            dx, dy, dz = self.__d[0], self.__d[1], self.__d[2]
+    def _compute_advection(self, concentration_aux: dict[str, list[float]], time: int):
 
-            C = np.zeros((self.__n[0], self.__n[1], self.__n[2]))
+        adv = np.zeros_like(concentration_aux[1:-1,1:-1,1:-1])
 
-            for idx in self.__source:
-                C[idx[0], idx[1], idx[2]] = self.__emission_rate
+        vx, vy, vz = self.__wind_model.get_velocity(time = time)
 
-            self.__concentration.update({'0': C.copy()})
+        vx = vx[1:-1,1:-1,1:-1]
+        vy = vy[1:-1,1:-1,1:-1]
+        vz = vz[1:-1,1:-1,1:-1]
 
-            total_steps = int(self.__time / dt)
+        dCdx_backward = (
+            concentration_aux[1:-1,1:-1,1:-1]
+            - concentration_aux[:-2,1:-1,1:-1]
+        ) / self._d[0]
 
-            save_interval = int(300 / dt) if dt <= 300 else 1
+        dCdx_forward = (
+            concentration_aux[2:,1:-1,1:-1]
+            - concentration_aux[1:-1,1:-1,1:-1]
+        ) / self._d[0]
 
-            for t in range(1, total_steps + 1):
-                Cn = C.copy()
+        adv += np.where(
+            vx >= 0,
+            vx * dCdx_backward,
+            vx * dCdx_forward
+        )
 
-                diffusion = dt * (
-                    Dx * (Cn[2:, 1:-1, 1:-1] - 2 * Cn[1:-1, 1:-1, 1:-1] + Cn[:-2, 1:-1, 1:-1]) / dx**2 +
-                    Dy * (Cn[1:-1, 2:, 1:-1] - 2 * Cn[1:-1, 1:-1, 1:-1] + Cn[1:-1, :-2, 1:-1]) / dy**2 +
-                    Dz * (Cn[1:-1, 1:-1, 2:] - 2 * Cn[1:-1, 1:-1, 1:-1] + Cn[1:-1, 1:-1, :-2]) / dz**2
+        dCdy_backward = (
+            concentration_aux[1:-1,1:-1,1:-1]
+            - concentration_aux[1:-1,:-2,1:-1]
+        ) / self._d[1]
+
+        dCdy_forward = (
+            concentration_aux[1:-1,2:,1:-1]
+            - concentration_aux[1:-1,1:-1,1:-1]
+        ) / self._d[1]
+
+        adv += np.where(
+            vy >= 0,
+            vy * dCdy_backward,
+            vy * dCdy_forward
+        )
+
+        dCdz_backward = (
+            concentration_aux[1:-1,1:-1,1:-1]
+            - concentration_aux[1:-1,1:-1,:-2]
+        ) / self._d[2]
+
+        dCdz_forward = (
+            concentration_aux[1:-1,1:-1,2:]
+            - concentration_aux[1:-1,1:-1,1:-1]
+        ) / self._d[2]
+
+        adv += np.where(
+            vz >= 0,
+            vz * dCdz_backward,
+            vz * dCdz_forward
+        )
+
+        return adv
+
+
+    def _apply_boundary_conditions_concentration(self, concentration_aux):
+        self._concentration[0, :, :]  = concentration_aux[1, :, :]
+        self._concentration[-1, :, :] = concentration_aux[-2, :, :]
+
+        self._concentration[:, 0, :]  = concentration_aux[:, 1, :]
+        self._concentration[:, -1, :] = concentration_aux[:, -2, :]
+
+        self._concentration[:, :, 0]  = concentration_aux[:, :, 1]
+        self._concentration[:, :, -1] = concentration_aux[:, :, -2]
+
+    def _step_concentration(self, time):
+
+        concentration_aux = self._concentration.copy()
+
+        diffusion = self._compute_diffusion(concentration_aux)
+
+        advection = self._compute_advection(concentration_aux, time)
+
+        decay = self._lamda * concentration_aux[1:-1,1:-1,1:-1]
+
+        self._concentration[1:-1,1:-1,1:-1] = (
+            concentration_aux[1:-1,1:-1,1:-1]
+            + self._d[3] * diffusion
+            - self._d[3] * advection
+            - self._d[3] * decay
+        )
+
+        self._concentration = np.maximum(self._concentration, 0)
+
+        self._apply_boundary_conditions_concentration(concentration_aux)
+
+        self._inject_sources()
+
+    def run(self, save_every=100):
+
+        total_steps = int(self._total_time / self._d[3])
+
+        self._saved_fields[0.0] = self._concentration.copy()
+
+        for n in range(1, total_steps + 1):
+
+            current_time = n * self._d[3]
+
+            self._step_concentration(current_time)
+
+            if n % save_every == 0:
+
+                self._saved_fields[current_time] = self._concentration.copy()
+
+                print(
+                    f"t = {current_time:.2f} s | "
+                    f"max(C) = {np.max(self._concentration):.5e}"
                 )
 
-                adv_x = self.__v[0] * dt * (Cn[1:-1, 1:-1, 1:-1] - Cn[:-2, 1:-1, 1:-1]) / dx
+        return self._saved_fields
 
-                adv_y = self.__v[1] * dt * (Cn[1:-1, 1:-1, 1:-1] - Cn[1:-1, :-2, 1:-1]) / dy
+    def spatial_visualization(self, visualization_type = "3d", vertical_axis = "z", levels = [0, 10, 20, 30, 40, 50], time = None):
 
-                adv_z = self.__v[2] * dt * (Cn[1:-1, 1:-1, 2:] - Cn[1:-1, 1:-1, 1:-1]) / dz
-
-                C[1:-1, 1:-1, 1:-1] = Cn[1:-1, 1:-1, 1:-1] + diffusion - adv_x - adv_y - adv_z - (lam * dt * Cn[1:-1, 1:-1, 1:-1])
-
-                C[0, :, :]  = Cn[1, :, :]
-                C[-1, :, :] = Cn[-2, :, :]
-
-                C[:, 0, :]  = Cn[:, 1, :]
-                C[:, -1, :] = Cn[:, -2, :]
-
-                C[:, :, 0]  = Cn[:, :, 1]
-                C[:, :, -1] = Cn[:, :, -2]
-
-                # Re-inyección constante de la fuente si es emisión continua (opcional, según modelo)
-                # for idx in self.__source:
-                #     C[idx[0], idx[1], idx[2]] += self.__emission_rate * dt
-
-                if t % save_interval == 0:
-                    current_time_seconds = int(t * dt)
-                    self.__concentration.update({f'{current_time_seconds}': C.copy()})
-
-    def spatial_visualization(self, visualization_type = "3d", vertical_axis = "z", levels = None, time = None):
-
-        time = check_provided_time(time, self.__time, self.__concentration)
+        time = check_provided_time(time, self._total_time, self._concentration)
 
         check_number_of_Z_to_check(vertical_axis, levels)
 
-        X, Y, aux_axis = define_X_Y_values(vertical_axis, self.__n)
+        X, Y, aux_axis = define_X_Y_values(vertical_axis, self._N)
 
-        concentration_max = stablish_maximum_concentration(time, self.__concentration)
+        concentration_max = stablish_maximum_concentration(time, self._concentration)
 
         fig, norm = define_initial_plotting_parameters()
 
         for i, level in enumerate(levels):
 
-            Z = define_Z_values(self.__concentration, vertical_axis, concentration_max, time, level)
+            Z = define_Z_values(self._concentration, vertical_axis, concentration_max, time, level)
 
             if (visualization_type=="3d"):
                 plot_3d(X, Y, Z, fig, norm, vertical_axis, level, aux_axis, concentration_max, vertical_axis_label=fr"Concentration ($\times$ ({concentration_max:.2e})$^{{-1}}$ Bq/m$^3$)", iteration = i)
@@ -126,10 +186,66 @@ class OutdoorsDiffusionAdvectionDecay:
 
         define_color_bar(fig, norm, concentration_max, vertical_axis_label = fr"Concentration ($\times$ ({concentration_max:.2e})$^{{-1}}$ Bq/m$^3$)")
 
-        plot_title(fig, f"Radioisotope = {self.__species_name} | Visualization type = {visualization_type} | Instant = {time} s | Wind speed = {self.__v} | Diffusion coefficient = {self.__diffusion_coefficient}")
+        plot_title(fig, f"Radioisotope = {self._species_name} | Visualization type = {visualization_type} | Instant = {time} s | Wind speed = {self.__wind_velocity} | Diffusion coefficient = {self._diffusion_coefficient}")
 
         show_plot()
 
 
     def provide_variables_hrtm(self):
-        return self.__concentration, self.__n, self.__v, self.__species_name, self.__diffusion_coefficient, self.__time
+        return self._concentration, self._n, self.__wind_velocity, self._species_name, self._diffusion_coefficient, self._time
+
+    def animate(self, z_values=None):
+        times = sorted(self._saved_fields.keys())
+
+        # Seleccionar 6 valores de z si no se especifican
+        if z_values is None:
+            z_values = np.linspace(
+                0,
+                self._N[2] - 1,
+                6,
+                dtype=int
+            )
+
+        fig, axes = plt.subplots(4, 3, figsize=(12, 8))
+        axes = axes.ravel()
+
+        first = self._saved_fields[times[0]]
+
+        ims = []
+        for ax, z in zip(axes, z_values):
+            im = ax.imshow(
+                first[:, :, z].T,
+                origin='lower',
+                extent=[0, self._N[0], 0, self._N[1]],
+                animated=True
+            )
+            ax.set_title(f"z = {z}")
+            fig.colorbar(im, ax=ax)
+            ims.append(im)
+
+        suptitle = fig.suptitle(f"t = {times[0]:.2f} s")
+
+        def update(frame):
+            t = times[frame]
+
+            for im, z in zip(ims, z_values):
+                im.set_array(
+                    self._saved_fields[t][:, :, z].T
+                )
+
+            suptitle.set_text(f"t = {t:.2f} s")
+
+            return ims
+
+        animation = FuncAnimation(
+            fig,
+            update,
+            frames=len(times),
+            interval=100,
+            blit=False
+        )
+
+        plt.tight_layout()
+        plt.show()
+
+        return animation
