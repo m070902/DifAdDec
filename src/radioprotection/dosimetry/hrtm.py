@@ -8,7 +8,7 @@ from radioprotection.utils import (
 
 from radioprotection.visualization import (
     check_provided_time,
-    check_number_of_Z_to_check,
+    check_or_stablish_Z_levels,
     define_X_Y_values,
     stablish_maximum_concentration,
     define_initial_plotting_parameters,
@@ -48,7 +48,7 @@ class HRTM:
 
         time = check_provided_time(time, self.__time, self.__dose)
 
-        check_number_of_Z_to_check(vertical_axis, levels)
+        check_or_stablish_Z_levels(vertical_axis, levels)
 
         X, Y, aux_axis = define_X_Y_values(vertical_axis, self.__n)
 

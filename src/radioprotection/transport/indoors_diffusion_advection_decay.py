@@ -11,21 +11,6 @@ from matplotlib.animation import FuncAnimation
 from radioprotection.utils import (
         diffusion_comprobation,
         CFL_comprobation,
-        lambda_for_species
-)
-
-from radioprotection.visualization import (
-    check_provided_time,
-    check_number_of_Z_to_check,
-    define_X_Y_values,
-    stablish_maximum_concentration,
-    define_initial_plotting_parameters,
-    define_Z_values,
-    plot_3d,
-    plot_2d,
-    define_color_bar,
-    plot_title,
-    show_plot
 )
 
 from .diffusion_advection_decay import DiffusionAdvectionDecay
@@ -372,7 +357,7 @@ class IndoorsDiffusionAdvectionDecay(DiffusionAdvectionDecay):
 
         return [vx, vy, vz]
 
-    def _compute_advection(self, concentration_aux: dict[str, list[float]]):
+    def _compute_advection(self, concentration_aux: list[float]):
 
         adv = np.zeros_like(concentration_aux[1:-1,1:-1,1:-1])
 
@@ -605,7 +590,7 @@ class IndoorsDiffusionAdvectionDecay(DiffusionAdvectionDecay):
 
         self._inject_sources()
 
-    def run(self, save_every=100):
+    def run(self, save_every_X_iteration=100):
 
         total_steps = int(self._total_time / self._d[3])
 
@@ -617,7 +602,7 @@ class IndoorsDiffusionAdvectionDecay(DiffusionAdvectionDecay):
 
             self._step_concentration()
 
-            if n % save_every == 0:
+            if n % save_every_X_iteration == 0:
 
                 self._saved_fields[current_time] = self._concentration.copy()
 
@@ -627,93 +612,3 @@ class IndoorsDiffusionAdvectionDecay(DiffusionAdvectionDecay):
                 )
 
         return self._saved_fields
-
-    def spatial_visualization(self, visualization_type = "3d", vertical_axis = "z", levels = None, time = None):
-
-        time = check_provided_time(time, self._total_time, self._concentration)
-
-        check_number_of_Z_to_check(vertical_axis, levels)
-
-        X, Y, aux_axis = define_X_Y_values(vertical_axis, self._N)
-
-        concentration_max = stablish_maximum_concentration(time, self._concentration)
-
-        fig, norm = define_initial_plotting_parameters()
-
-        for i, level in enumerate(levels):
-
-            Z = define_Z_values(self._concentration, vertical_axis, concentration_max, time, level)
-
-            if (visualization_type=="3d"):
-                plot_3d(X, Y, Z, fig, norm, vertical_axis, level, aux_axis, concentration_max, vertical_axis_label=fr"Concentration ($\times$ ({concentration_max:.2e})$^{{-1}}$ Bq/m$^3$)", iteration = i)
-
-            elif (visualization_type == "2d"):
-                plot_2d(X, Y, Z, fig, norm, vertical_axis, level, aux_axis, iteration = i)
-
-            else:
-                raise ValueError("The provided string for visualization type is not valid.")
-
-        define_color_bar(fig, norm, concentration_max, vertical_axis_label = fr"Concentration ($\times$ ({concentration_max:.2e})$^{{-1}}$ Bq/m$^3$)")
-
-        plot_title(fig, f"Radioisotope = {self._species_name} | Visualization type = {visualization_type} | Instant = {time} s | Wind speed = {self.__wind_velocity} | Diffusion coefficient = {self._diffusion_coefficient}")
-
-        show_plot()
-
-
-    def provide_variables_hrtm(self):
-        return self._concentration, self._N, self.__wind_velocity, self._species_name, self._diffusion_coefficient, self.__time
-
-    def animate(self, z_values=None):
-        times = sorted(self._saved_fields.keys())
-
-        if z_values is None:
-            z_values = np.linspace(
-                0,
-                self._N[2] - 1,
-                6,
-                dtype=int
-            )
-
-        fig, axes = plt.subplots(2, 3, figsize=(12, 8))
-        axes = axes.ravel()
-
-        first = self._saved_fields[times[0]]
-
-        ims = []
-        for ax, z in zip(axes, z_values):
-            im = ax.imshow(
-                first[:, :, z].T,
-                origin='lower',
-                extent=[0, self._N[0], 0, self._N[1]],
-                animated=True
-            )
-            ax.set_title(f"z = {z}")
-            fig.colorbar(im, ax=ax)
-            ims.append(im)
-
-        suptitle = fig.suptitle(f"t = {times[0]:.2f} s")
-
-        def update(frame):
-            t = times[frame]
-
-            for im, z in zip(ims, z_values):
-                im.set_array(
-                    self._saved_fields[t][:, :, z].T
-                )
-
-            suptitle.set_text(f"t = {t:.2f} s")
-
-            return ims
-
-        animation = FuncAnimation(
-            fig,
-            update,
-            frames=len(times),
-            interval=100,
-            blit=False
-        )
-
-        plt.tight_layout()
-        plt.show()
-
-        return animation

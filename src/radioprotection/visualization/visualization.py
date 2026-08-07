@@ -4,23 +4,49 @@ from matplotlib import cm
 import matplotlib.colors as mcolors
 from matplotlib.colors import Normalize
 
-def check_provided_time(time: float, duration: float, concentration: dict[str, list[float]]) -> float:
-    if time is None:
-        time = len(concentration) - 1
-        return  time
-    elif (time < 0 or time > duration):
-        valid_times = list(range(len(concentration)))
+def check_provided_time(time_to_check: float, duration: float, saved_fields: dict[str, list[float]]) -> float:
+    if time_to_check is None:
+        time_to_check = len(saved_fields) - 1
+        return  time_to_check
+    elif (time_to_check < 0 or time_to_check > duration):
+        valid_time_to_check = list(range(len(saved_fields)))
 
         raise ValueError(
-            "Provided time value is either not registered or not correctly provided.\n"
+            "Provided time_to_check value is either not registered or not correctly provided.\n"
             f"Please introduce one of the following:\n"
-            f"{', '.join(map(str, valid_times))}"
+            f"{', '.join(map(str, valid_time_to_check))}"
         )
-    return time
+    return time_to_check
 
-def check_number_of_Z_to_check(vertical_axis: str, levels: int):
+def check_or_stablish_Z_levels(N: tuple, vertical_axis: str, levels: int):
+
+    if levels is None:
+        if vertical_axis == "x":
+            levels = np.linspace(
+                0,
+                N[0] - 1,
+                6,
+                dtype=int
+            )
+        elif vertical_axis == "y":
+            levels = np.linspace(
+                0,
+                N[1] - 1,
+                6,
+                dtype=int
+            )
+        elif vertical_axis == "z":
+            levels = np.linspace(
+                0,
+                N[2] - 1,
+                6,
+                dtype=int
+                )
+
     if len(levels) > 6:
         raise ValueError(f"6 or less values of {vertical_axis} must be provided.")
+
+    return levels
 
 def define_X_Y_values(vertical_axis: str, n: tuple[float, float, float]) -> tuple[list[float], list[float], list[str, str]]:
     if vertical_axis == "x":
@@ -42,21 +68,21 @@ def define_X_Y_values(vertical_axis: str, n: tuple[float, float, float]) -> tupl
         raise ValueError("The provided string for vertical axis is not valid.")
     return X, Y, aux_axis
 
-def stablish_maximum_concentration(time: float, concentration: dict[str, list[float]]):
-    return np.max(concentration[f"{time}"])
+def stablish_maximum_concentration(time_to_check: float, saved_fields: dict[str, list[float]]):
+    return np.max(saved_fields[time_to_check])
 
 def define_initial_plotting_parameters():
     norm = mcolors.Normalize(vmin=0, vmax=1)
     fig = plt.figure(figsize=(20, 10))
     return fig, norm
 
-def define_Z_values(concentration: dict[str, list[float]], vertical_axis: str, concentration_max:  float, time: float, level: int):
+def define_Z_values(saved_values: dict[str, list[float]], vertical_axis: str, concentration_max:  float, time_to_check: float, level: int):
     if vertical_axis == "x":
-        Z = concentration[f'{time}'][level-1, :, :].T / concentration_max
+        Z = saved_values[time_to_check][level-1, :, :].T / concentration_max
     elif vertical_axis == "y":
-        Z = concentration[f'{time}'][:, level-1, :].T / concentration_max
+        Z = saved_values[time_to_check][:, level-1, :].T / concentration_max
     elif vertical_axis == "z":
-        Z = concentration[f'{time}'][:, :, level-1].T / concentration_max
+        Z = saved_values[time_to_check][:, :, level-1].T / concentration_max
     return Z
 
 def plot_3d(X, Y, Z, fig, norm, vertical_axis, level, aux_axis, concentration_max, vertical_axis_label, iteration = 0):

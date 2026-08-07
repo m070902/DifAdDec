@@ -1,27 +1,16 @@
-import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
-from scipy.sparse import lil_matrix
-from scipy.sparse.linalg import cg
-from scipy.sparse.linalg import spsolve
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
+import csv
 
 from radioprotection.utils import (
-        diffusion_comprobation,
-        CFL_comprobation,
-        lambda_for_species
-)
-
-from radioprotection.utils import (
-    diffusion_comprobation,
-    CFL_comprobation,
     lambda_for_species
 )
 
 from radioprotection.visualization import (
     check_provided_time,
-    check_number_of_Z_to_check,
+    check_or_stablish_Z_levels,
     define_X_Y_values,
     stablish_maximum_concentration,
     define_initial_plotting_parameters,
@@ -57,7 +46,7 @@ class DiffusionAdvectionDecay:
         self._saved_fields = {}
 
 
-    def _compute_diffusion(self, concentration_aux: dict[str, list[float]]):
+    def _compute_diffusion(self, concentration_aux: list[float]):
 
         return (
             self._diffusion_coefficient[0] * (
@@ -86,3 +75,142 @@ class DiffusionAdvectionDecay:
     def _inject_sources(self):
         for idx in self._source_positions:
             self._concentration[idx] += self._emission_rate * self._d[3]
+
+    import csv
+
+    def make_csv_for_instant(self, time, filename="concentration.csv"):
+
+        if time not in self._saved_fields:
+            raise ValueError(f"No concentration field stored at t = {time}")
+
+        concentration = self._saved_fields[time]
+
+        with open(filename, "w", newline="") as file:
+            writer = csv.writer(file)
+
+            writer.writerow([
+                "x",
+                "y",
+                "z",
+                "concentration"
+            ])
+
+            nx, ny, nz = concentration.shape
+
+            for x in range(nx):
+                for y in range(ny):
+                    for z in range(nz):
+                        writer.writerow([
+                            x,
+                            y,
+                            z,
+                            concentration[x, y, z]
+                        ])
+
+        print(f"CSV saved as '{filename}'")
+
+    def plot_instant(self, plot_name = "Default Name", visualization_type = "3d", vertical_axis = "z", levels = None, time_to_check = None):
+
+        if time_to_check == None: time_to_check = self._total_time
+
+        time_to_check = check_provided_time(time_to_check, self._total_time, self._concentration)
+
+        levels = check_or_stablish_Z_levels(self._N, vertical_axis, levels)
+
+        X, Y, aux_axis = define_X_Y_values(vertical_axis, self._N)
+
+        concentration_max = stablish_maximum_concentration(time_to_check, self._saved_fields)
+
+        fig, norm = define_initial_plotting_parameters()
+
+        for i, level in enumerate(levels):
+
+            Z = define_Z_values(self._saved_fields, vertical_axis, concentration_max, time_to_check, level)
+
+            if (visualization_type=="3d"):
+                plot_3d(X, Y, Z, fig, norm, vertical_axis, level, aux_axis, concentration_max, vertical_axis_label=fr"Concentration ($\times$ ({concentration_max:.2e})$^{{-1}}$ Bq/m$^3$)", iteration = i)
+
+            elif (visualization_type == "2d"):
+                plot_2d(X, Y, Z, fig, norm, vertical_axis, level, aux_axis, iteration = i)
+
+            else:
+                raise ValueError("The provided string for visualization type is not valid.")
+
+        define_color_bar(fig, norm, concentration_max, vertical_axis_label = fr"Concentration ($\times$ ({concentration_max:.2e})$^{{-1}}$ Bq/m$^3$)")
+
+        plot_title(fig, plot_name)
+
+        show_plot()
+
+
+    def _provide_variables_hrtm(self):
+        return self._concentration, self._N, self.__wind_velocity, self._species_name, self._diffusion_coefficient, self.__time
+
+    def animate(self, plot_name="Default Name", z_values=None):
+        times = sorted(self._saved_fields.keys())
+
+        if z_values is None:
+            z_values = np.linspace(
+                0,
+                self._N[2] - 1,
+                6,
+                dtype=int
+            )
+
+        fig, axes = plt.subplots(
+            2, 3,
+            figsize=(12, 8),
+            num=plot_name
+        )
+        axes = axes.ravel()
+
+        first = self._saved_fields[times[0]]
+
+        ims = []
+        for ax, z in zip(axes, z_values):
+            im = ax.imshow(
+                first[:, :, z].T,
+                origin="lower",
+                extent=[0, self._N[0], 0, self._N[1]],
+                animated=True
+            )
+            ax.set_title(f"z = {z}")
+            fig.colorbar(im, ax=ax)
+            ims.append(im)
+
+        # Título principal
+        fig.suptitle(plot_name, fontsize=16, fontweight="bold")
+
+        # Subtítulo con el tiempo
+        subtitle = fig.text(
+            0.5,
+            0.94,
+            f"t = {times[0]:.2f} s",
+            ha="center",
+            fontsize=12
+        )
+
+        def update(frame):
+            t = times[frame]
+
+            for im, z in zip(ims, z_values):
+                im.set_array(
+                    self._saved_fields[t][:, :, z].T
+                )
+
+            subtitle.set_text(f"t = {t:.2f} s")
+
+            return ims + [subtitle]
+
+        animation = FuncAnimation(
+            fig,
+            update,
+            frames=len(times),
+            interval=100,
+            blit=False
+        )
+
+        plt.tight_layout(rect=[0, 0, 1, 0.90])
+        plt.show()
+
+        return animation

@@ -6,15 +6,7 @@ from radioprotection import (
 
 if __name__ == "__main__":
 
-    source = []
-
-    for i in range(45,56,1):
-        for j in range(45,56,1):
-            source.append((i,j,0))
-
-
-
-    sim = IndoorsDiffusionAdvectionDecay(grid_shape=(100, 100, 20), total_time=5000, diffusion_coefficient=(6e-3,6e-3,6e-3), species_name="Ra-226", wall_deposition=5e-5, source_positions=source, emission_rate=30, inlet_wind_velocity=0.5, outlet_wind_velocity=0.5,
+    sim = IndoorsDiffusionAdvectionDecay(grid_shape=(100, 100, 20), total_time=500, diffusion_coefficient=(6e-3,6e-3,6e-3), species_name="Ra-226", wall_deposition=5e-5, source_positions=[(50, 50, 10)], emission_rate=30, inlet_wind_velocity=0.5, outlet_wind_velocity=0.5,
     inlet_regions=[
         {
             "wall":"xmin",
@@ -32,4 +24,4 @@ if __name__ == "__main__":
 
     results = sim.run(save_every=100)
 
-    sim.animate()
+    sim.plot()

@@ -1,8 +1,12 @@
 import numpy as np
 
+from radioprotection.utils import (
+        CFL_comprobation
+)
+
 class WindField:
 
-    def __init__(self, grid_shape):
+    def __init__(self, grid_shape = (50, 50, 50)):
         self.Nx, self.Ny, self.Nz = grid_shape
 
         x = np.arange(self.Nx)
@@ -12,6 +16,10 @@ class WindField:
         self.X, self.Y, self.Z = np.meshgrid(
             x, y, z, indexing="ij"
         )
+    def _check_CFL(self, d):
+        if (CFL_comprobation((self._u, self._v, self._w), d) == False):
+            raise ValueError("The provided values for the function 'diffusion_advection_decay' do not follow the stability conditions of the equation.")
+
 
 class UniformField(WindField):
     def __init__(self, grid_shape, initial_velocity=(5.0, 0.0, 0.0)):
@@ -24,7 +32,8 @@ class UniformField(WindField):
 
         self._u, self._v, self._w =  u, v, w
 
-    def get_velocity(self, **kwargs):
+    def get_velocity(self, *args):
+        self._check_CFL(args[0])
         return self._u, self._v, self._w
 
 class ShearField(WindField):
@@ -51,7 +60,8 @@ class ShearField(WindField):
 
         self._u, self._v, self._w =  u, v, w
 
-    def get_velocity(self, **kwargs):
+    def get_velocity(self, *args):
+        self._check_CFL(args[0])
         return self._u, self._v, self._w
 
 class GustField(WindField):
@@ -66,16 +76,19 @@ class GustField(WindField):
         self.__amplitude = amplitude
         self.__period = period
 
-    def get_velocity(self, **kwargs):
+    def get_velocity(self, *args):
+
         velocity = self.__Umean + self.__amplitude * np.sin(
-            2 * np.pi * next(iter(kwargs.values())) / self.__period
+            2 * np.pi * args[1] / self.__period
         )
 
-        u = np.full((self.Nx, self.Ny, self.Nz), velocity)
-        v = np.zeros_like(u)
-        w = np.zeros_like(u)
+        self._u = np.full((self.Nx, self.Ny, self.Nz), velocity)
+        self._v = np.zeros_like(self._u)
+        self._w = np.zeros_like(self._u)
 
-        return u, v, w
+        self._check_CFL(args[0])
+
+        return self._u, self._v, self._w
 
 class VortexField(WindField):
     def __init__(self,
@@ -96,5 +109,8 @@ class VortexField(WindField):
 
         self._u, self._v, self._w =  u, v, w
 
-    def get_velocity(self, **kwargs):
+    def get_velocity(self, *args):
+
+        self._check_CFL(args[0])
+
         return self._u, self._v, self._w
