@@ -10,9 +10,9 @@ from radioprotection.utils import (
 
 from radioprotection.visualization import (
     check_provided_time,
-    check_or_stablish_Z_levels,
+    check_or_establish_Z_levels,
     define_X_Y_values,
-    stablish_maximum_concentration,
+    establish_maximum_concentration,
     define_initial_plotting_parameters,
     define_Z_values,
     plot_3d,
@@ -78,76 +78,146 @@ class DiffusionAdvectionDecay:
 
     import csv
 
-    def make_csv_for_instant(self, time, filename="concentration.csv"):
+    def make_csv_for_instant(self, time = None, filename="concentration.csv"):
+
+        if time == None:
+            time = self._total_time
 
         if time not in self._saved_fields:
             raise ValueError(f"No concentration field stored at t = {time}")
 
         concentration = self._saved_fields[time]
 
-        with open(filename, "w", newline="") as file:
-            writer = csv.writer(file)
+        dx, dy, dz = self._d[:3]
 
-            writer.writerow([
-                "x",
-                "y",
-                "z",
-                "concentration"
-            ])
+        x, y, z = np.indices(concentration.shape)
 
-            nx, ny, nz = concentration.shape
+        data = np.column_stack((
+            x.ravel() * dx,
+            y.ravel() * dy,
+            z.ravel() * dz,
+            concentration.ravel()
+        ))
 
-            for x in range(nx):
-                for y in range(ny):
-                    for z in range(nz):
-                        writer.writerow([
-                            x,
-                            y,
-                            z,
-                            concentration[x, y, z]
-                        ])
+        np.savetxt(
+            filename,
+            data,
+            delimiter=",",
+            header="x (m),y (m),z (m),concentration (Bq/m³)",
+            comments=""
+        )
 
         print(f"CSV saved as '{filename}'")
 
-    def plot_instant(self, plot_name = "Default Name", visualization_type = "3d", vertical_axis = "z", levels = None, time_to_check = None):
+    def plot_instant(
+        self,
+        plot_name="Default Name",
+        visualization_type="3d",
+        vertical_axis="z",
+        levels=None,
+        time_to_check=None
+    ):
 
-        if time_to_check == None: time_to_check = self._total_time
+        time_to_check = check_provided_time(
+            time_to_check,
+            self._saved_fields
+        )
 
-        time_to_check = check_provided_time(time_to_check, self._total_time, self._concentration)
+        levels = check_or_establish_Z_levels(
+            self._N,
+            vertical_axis,
+            levels
+        )
 
-        levels = check_or_stablish_Z_levels(self._N, vertical_axis, levels)
+        X, Y, aux_axis = define_X_Y_values(
+            vertical_axis,
+            self._N,
+            self._d
+        )
 
-        X, Y, aux_axis = define_X_Y_values(vertical_axis, self._N)
-
-        concentration_max = stablish_maximum_concentration(time_to_check, self._saved_fields)
+        concentration_max = establish_maximum_concentration(
+            self._saved_fields
+        )
 
         fig, norm = define_initial_plotting_parameters()
 
         for i, level in enumerate(levels):
 
-            Z = define_Z_values(self._saved_fields, vertical_axis, concentration_max, time_to_check, level)
+            Z = define_Z_values(
+                self._saved_fields,
+                vertical_axis,
+                concentration_max,
+                time_to_check,
+                level
+            )
 
-            if (visualization_type=="3d"):
-                plot_3d(X, Y, Z, fig, norm, vertical_axis, level, aux_axis, concentration_max, vertical_axis_label=fr"Concentration ($\times$ ({concentration_max:.2e})$^{{-1}}$ Bq/m$^3$)", iteration = i)
+            if visualization_type == "3d":
 
-            elif (visualization_type == "2d"):
-                plot_2d(X, Y, Z, fig, norm, vertical_axis, level, aux_axis, iteration = i)
+                plot_3d(
+                    X,
+                    Y,
+                    Z,
+                    fig,
+                    norm,
+                    vertical_axis,
+                    level,
+                    aux_axis,
+                    concentration_max,
+                    vertical_axis_label=(
+                        r"Normalized concentration "
+                        r"$C/C_{\max}$"
+                    ),
+                    d=self._d,
+                    iteration=i
+                )
+
+            elif visualization_type == "2d":
+
+                plot_2d(
+                    X,
+                    Y,
+                    Z,
+                    fig,
+                    norm,
+                    vertical_axis,
+                    level,
+                    aux_axis,
+                    d=self._d,
+                    iteration=i
+                )
 
             else:
-                raise ValueError("The provided string for visualization type is not valid.")
 
-        define_color_bar(fig, norm, concentration_max, vertical_axis_label = fr"Concentration ($\times$ ({concentration_max:.2e})$^{{-1}}$ Bq/m$^3$)")
+                raise ValueError(
+                    "The provided string for visualization type is not valid."
+                )
 
-        plot_title(fig, plot_name)
+        define_color_bar(
+            fig,
+            norm,
+            colorbar_label = (
+                rf"Normalized concentration $C/C_{{\max}}$"
+                "\n"
+                rf"$C_{{\max}} = {concentration_max:.2e}\ "
+                rf"\mathrm{{Bq\,m^{{-3}}}}$"
+            )
+        )
+
+        plot_title(
+            fig,
+            plot_name
+        )
 
         show_plot()
 
-
-    def _provide_variables_hrtm(self):
-        return self._concentration, self._N, self.__wind_velocity, self._species_name, self._diffusion_coefficient, self.__time
-
     def animate(self, plot_name="Default Name", z_values=None):
+
         times = sorted(self._saved_fields.keys())
+
+        if len(times) == 0:
+            raise RuntimeError(
+                "No saved concentration fields available."
+            )
 
         if z_values is None:
             z_values = np.linspace(
@@ -157,31 +227,88 @@ class DiffusionAdvectionDecay:
                 dtype=int
             )
 
+        # Global maximum concentration
+        concentration_max = max(
+            np.max(field)
+            for field in self._saved_fields.values()
+        )
+
+        if concentration_max == 0:
+            concentration_max = 1.0
+
+        # Physical coordinates
+        x = np.arange(self._N[0]) * self._d[0]
+        y = np.arange(self._N[1]) * self._d[1]
+
+        extent = [
+            x[0],
+            x[-1],
+            y[0],
+            y[-1]
+        ]
+
         fig, axes = plt.subplots(
-            2, 3,
+            2,
+            3,
             figsize=(12, 8),
             num=plot_name
         )
+
         axes = axes.ravel()
 
-        first = self._saved_fields[times[0]]
+        # Normalize the first concentration field
+        first = (
+            self._saved_fields[times[0]]
+            / concentration_max
+        )
 
         ims = []
+
         for ax, z in zip(axes, z_values):
+
             im = ax.imshow(
                 first[:, :, z].T,
                 origin="lower",
-                extent=[0, self._N[0], 0, self._N[1]],
+                extent=extent,
+                cmap="viridis",
+                vmin=0,
+                vmax=1,
+                interpolation="nearest",
+                aspect="equal",
                 animated=True
             )
-            ax.set_title(f"z = {z}")
-            fig.colorbar(im, ax=ax)
+
+            ax.set_title(
+                f"z = {z * self._d[2]:.2f} m"
+            )
+
+            ax.set_xlabel("x (m)")
+            ax.set_ylabel("y (m)")
+
             ims.append(im)
 
-        # Título principal
-        fig.suptitle(plot_name, fontsize=16, fontweight="bold")
+        # Single colorbar
+        cbar = fig.colorbar(
+            ims[0],
+            ax=axes,
+            fraction=0.035,
+            pad=0.03
+        )
 
-        # Subtítulo con el tiempo
+        cbar.set_label(
+            rf"Normalized concentration $C/C_{{\max}}$"
+            "\n"
+            rf"$C_{{\max}} = "
+            rf"{concentration_max:.2e}\ "
+            rf"\mathrm{{Bq\,m^{{-3}}}}$"
+        )
+
+        fig.suptitle(
+            plot_name,
+            fontsize=16,
+            fontweight="bold"
+        )
+
         subtitle = fig.text(
             0.5,
             0.94,
@@ -191,14 +318,23 @@ class DiffusionAdvectionDecay:
         )
 
         def update(frame):
+
             t = times[frame]
 
+            field = (
+                self._saved_fields[t]
+                / concentration_max
+            )
+
             for im, z in zip(ims, z_values):
+
                 im.set_array(
-                    self._saved_fields[t][:, :, z].T
+                    field[:, :, z].T
                 )
 
-            subtitle.set_text(f"t = {t:.2f} s")
+            subtitle.set_text(
+                f"t = {t:.2f} s"
+            )
 
             return ims + [subtitle]
 
@@ -210,7 +346,6 @@ class DiffusionAdvectionDecay:
             blit=False
         )
 
-        plt.tight_layout(rect=[0, 0, 1, 0.90])
         plt.show()
 
         return animation

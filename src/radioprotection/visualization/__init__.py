@@ -1,8 +1,8 @@
 from .visualization import (
     check_provided_time,
-    check_or_stablish_Z_levels,
+    check_or_establish_Z_levels,
     define_X_Y_values,
-    stablish_maximum_concentration,
+    establish_maximum_concentration,
     define_initial_plotting_parameters,
     define_Z_values,
     plot_3d,
@@ -14,9 +14,9 @@ from .visualization import (
 
 __all__ = [
     "check_provided_time",
-    "check_or_stablish_Z_levels",
+    "check_or_establish_Z_levels",
     "define_X_Y_values",
-    "stablish_maximum_concentration",
+    "establish_maximum_concentration",
     "define_initial_plotting_parameters",
     "define_Z_values",
     "plot_3d",

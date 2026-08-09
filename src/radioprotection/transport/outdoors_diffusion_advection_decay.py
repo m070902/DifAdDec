@@ -120,7 +120,7 @@ class OutdoorsDiffusionAdvectionDecay(DiffusionAdvectionDecay):
 
         self._inject_sources()
 
-    def run(self, save_every=100):
+    def run(self, save_every_X_iteration=100):
 
         total_steps = int(self._total_time / self._d[3])
 
@@ -132,7 +132,7 @@ class OutdoorsDiffusionAdvectionDecay(DiffusionAdvectionDecay):
 
             self._step_concentration(current_time)
 
-            if n % save_every == 0:
+            if n % save_every_X_iteration == 0:
 
                 self._saved_fields[current_time] = self._concentration.copy()
 

@@ -30,8 +30,8 @@ def determine_inhalation_dose_coefficients(data, population_type, species_name, 
 
     return inhalation_dose_coefficients
 
-def determine_dose(concentration, breathing_rate, exposition_time, inhalation_dose_coefficients):
+def determine_dose(concentration_saved_fields, breathing_rate, exposition_time, inhalation_dose_coefficients):
     dose = {}
-    for key in concentration:
-        dose[key] = concentration[key] * breathing_rate * exposition_time * inhalation_dose_coefficients
+    for key in concentration_saved_fields:
+        dose[key] = concentration_saved_fields[key] * breathing_rate * exposition_time * inhalation_dose_coefficients
     return dose
