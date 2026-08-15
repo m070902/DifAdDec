@@ -63,7 +63,7 @@ from typing import Any
 
 import numpy as np
 
-from radioprotection import (
+from DifAdDec import (
     IndoorsDiffusionAdvectionDecay,
     OutdoorsDiffusionAdvectionDecay,
     UniformField,

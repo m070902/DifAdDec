@@ -1,6 +1,6 @@
 import numpy as np
 
-from radioprotection import (
+from DifAdDec import (
     IndoorsDiffusionAdvectionDecay
 )
 

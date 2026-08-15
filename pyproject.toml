@@ -1,17 +1,116 @@
 [build-system]
-requires = ["setuptools>=61"]
+requires = [
+"setuptools>=68",
+"wheel"
+]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "DifAdDec"
 version = "0.1.0"
-description = "Radiological transport and dosimetry modelling"
+
+description = "Three-dimensional simulation of radioactive contaminant transport through diffusion, advection and radioactive decay."
+
+readme = "README.md"
+
+requires-python = ">=3.11"
+
+license = { file = "LICENSE" }
+
 authors = [
-    {name = "Marcos Sarmiento Pellitero"}
+{ name = "Marcos" }
+]
+
+keywords = [
+"radioactivity",
+"radioprotection",
+"diffusion",
+"advection",
+"radioactive decay",
+"contaminant transport",
+"environmental modelling",
+"dosimetry",
+"HRTM"
+]
+
+classifiers = [
+"Development Status :: 3 - Alpha",
+"Intended Audience :: Science/Research",
+"Intended Audience :: Developers",
+"Programming Language :: Python :: 3",
+"Programming Language :: Python :: 3 :: Only",
+"Programming Language :: Python :: 3.11",
+"Programming Language :: Python :: 3.12",
+"Programming Language :: Python :: 3.13",
+"Topic :: Scientific/Engineering",
+"Topic :: Scientific/Engineering :: Physics"
 ]
 
 dependencies = [
-    "numpy",
-    "scipy",
-    "matplotlib"
+"numpy>=1.24",
+"scipy>=1.10",
+"matplotlib>=3.7"
+]
+
+[project.optional-dependencies]
+
+dev = [
+"pytest>=7.0",
+"pytest-cov>=4.0",
+"ruff>=0.5",
+"black>=24.0"
+]
+
+[project.urls]
+
+Homepage = "https://github.com/<YOUR-USERNAME>/DifAdDec"
+
+Repository = "https://github.com/<YOUR-USERNAME>/DifAdDec"
+
+Issues = "https://github.com/<YOUR-USERNAME>/DifAdDec/issues"
+
+[tool.setuptools]
+
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+
+where = ["src"]
+
+[tool.setuptools.package-data]
+
+DifAdDec = [
+"data/*.json",
+"data/*.csv"
+]
+
+[tool.pytest.ini_options]
+
+testpaths = [
+"tests"
+]
+
+[tool.black]
+
+line-length = 88
+
+target-version = [
+"py311",
+"py312",
+"py313"
+]
+
+[tool.ruff]
+
+line-length = 88
+
+target-version = "py311"
+
+[tool.ruff.lint]
+
+select = [
+"E",
+"F",
+"I",
+"W"
 ]
