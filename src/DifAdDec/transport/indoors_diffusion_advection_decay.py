@@ -8,7 +8,7 @@ import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
 
 
-from radioprotection.utils import (
+from DifAdDec.utils import (
         diffusion_comprobation,
         CFL_comprobation,
 )

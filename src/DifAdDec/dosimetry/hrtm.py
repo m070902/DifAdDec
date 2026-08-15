@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
 import csv
 
-from radioprotection.visualization import (
+from DifAdDec.visualization import (
     check_provided_time,
     check_or_establish_Z_levels,
     define_X_Y_values,
@@ -18,7 +18,7 @@ from radioprotection.visualization import (
     show_plot
 )
 
-from radioprotection.utils import (
+from DifAdDec.utils import (
     read_hrtm_data,
     assign_gender_children,
     determine_breathing_rate,

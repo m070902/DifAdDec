@@ -4,7 +4,7 @@ from matplotlib.animation import FuncAnimation
 
 from .diffusion_advection_decay import DiffusionAdvectionDecay
 
-from radioprotection.utils import (
+from DifAdDec.utils import (
     diffusion_comprobation,
 )
 

@@ -1,6 +1,6 @@
 import numpy as np
 
-from radioprotection.utils import (
+from DifAdDec.utils import (
         CFL_comprobation
 )
 

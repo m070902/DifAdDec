@@ -4,11 +4,11 @@ import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
 import csv
 
-from radioprotection.utils import (
+from DifAdDec.utils import (
     lambda_for_species
 )
 
-from radioprotection.visualization import (
+from DifAdDec.visualization import (
     check_provided_time,
     check_or_establish_Z_levels,
     define_X_Y_values,

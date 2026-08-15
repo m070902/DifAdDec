@@ -3,7 +3,7 @@ requires = ["setuptools>=61"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "radioprotection"
+name = "DifAdDec"
 version = "0.1.0"
 description = "Radiological transport and dosimetry modelling"
 authors = [
