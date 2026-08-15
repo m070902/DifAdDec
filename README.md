@@ -43,8 +43,7 @@ $$
 +
 D_y\frac{\partial^2 C}{\partial y^2}
 +
-D_z\frac{\partial^2 C}{\partial z^2}
-- \vec{v}\cdot\nabla C
+D_z\frac{\partial^2 C}{\partial z^2} - \vec{v}\cdot\nabla C
 
 \lambda C
 +
