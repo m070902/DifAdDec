@@ -38,16 +38,7 @@ Python library for the numerical simulation of radioactive contaminant transport
 The library solves a numerical formulation of the diffusion-advection-decay equation:
 
 $$
-\frac{\partial C}{\partial t}
-=D_x\frac{\partial^2 C}{\partial x^2}
-+
-D_y\frac{\partial^2 C}{\partial y^2}
-+
-D_z\frac{\partial^2 C}{\partial z^2} - \vec{v}\cdot\nabla C
-
-\lambda C
-+
-S
+\frac{\partial C}{\partial t}=D_x\frac{\partial^2 C}{\partial x^2} + D_y\frac{\partial^2 C}{\partial y^2} + D_z\frac{\partial^2 C}{\partial z^2} - \vec{v}\cdot\nabla C \lambda C + S
 $$
 
 where:
