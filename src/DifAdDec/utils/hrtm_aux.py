@@ -6,7 +6,7 @@ def read_hrtm_data():
     data = []
     json_paths = ["hrtm_subjects_breathing.json", "dcf_public.json", "dcf_workers.json"]
     for path in json_paths:
-        json_path = files("radioprotection.data").joinpath(path)
+        json_path = files("DifAdDec.data").joinpath(path)
 
         with json_path.open("r", encoding="utf-8") as f:
             data.append(json.load(f))

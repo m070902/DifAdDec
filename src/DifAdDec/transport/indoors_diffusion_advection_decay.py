@@ -24,6 +24,7 @@ class IndoorsDiffusionAdvectionDecay(DiffusionAdvectionDecay):
         diffusion_coefficient=(1e-3, 1e-3, 1e-3),   # m²/s
         species_name = "U-234",
         source_positions=[(25, 25, 25)],
+        source_effective_iterations = None,
         emission_rate=3.0,
         wall_deposition=1e-4,           # m/s
         inlet_regions=None,
@@ -32,7 +33,7 @@ class IndoorsDiffusionAdvectionDecay(DiffusionAdvectionDecay):
         outlet_wind_velocity=0.0,
         inlet_concentration=0.0
     ):
-        super().__init__(grid_shape, d, total_time, diffusion_coefficient, species_name, source_positions, emission_rate)
+        super().__init__(grid_shape, d, total_time, diffusion_coefficient, species_name, source_positions, source_effective_iterations, emission_rate)
 
         self.__wall_deposition = wall_deposition
 
@@ -588,7 +589,6 @@ class IndoorsDiffusionAdvectionDecay(DiffusionAdvectionDecay):
 
         self._apply_boundary_conditions_concentration()
 
-        self._inject_sources()
 
     def run(self, save_every_X_iteration=100):
 
@@ -601,6 +601,9 @@ class IndoorsDiffusionAdvectionDecay(DiffusionAdvectionDecay):
             current_time = n * self._d[3]
 
             self._step_concentration()
+
+            if n < self._source_effective_iterations:
+                self._inject_sources()
 
             if n % save_every_X_iteration == 0:
 

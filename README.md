@@ -144,7 +144,7 @@ DifAdDec/
 │   ├── ...
 │
 └── visualization/
-    ├── ...
+├── ...
 ```
 
 The main public components are:
@@ -214,21 +214,21 @@ A typical `DifAdDec` simulation follows these steps:
 
 ```text
 1. Define the computational grid
-          ↓
+↓
 2. Define spatial and temporal discretization
-          ↓
+↓
 3. Define radioactive species
-          ↓
+↓
 4. Define radioactive sources
-          ↓
+↓
 5. Select simulation environment
-          ↓
+↓
 6. Run the simulation
-          ↓
+↓
 7. Save concentration fields
-          ↓
+↓
 8. Visualize or export results
-          ↓
+↓
 9. Calculate dose using HRTM
 ```
 
@@ -312,97 +312,144 @@ corresponds to a domain with approximately:
 
 Radioactive sources are defined using:
 
-```python
 source_positions
-```
 
 and:
 
-```python
 emission_rate
-```
 
 For example:
 
-```python
 source_positions = [
     (25, 25, 25)
 ]
-```
+
+emission_rate = 3.0
 
 defines a source at the grid position:
 
-```text
 x = 25
 y = 25
 z = 25
-```
 
-The source emission is introduced through:
+The current implementation allows both continuous sources and temporally limited sources.
 
-```python
-emission_rate = 3.0
-```
+## Continuous radioactive sources
 
-The current implementation injects the source contribution into the corresponding grid cell during every time step.
+By default, the source remains active throughout the simulation. At every time step, the source contribution is injected into the corresponding grid cell.
+
+The amount introduced during each time step is:
+
+$$
+\Delta C = Q\Delta t
+$$
+
+where:
+
+$Q$ is the emission rate.
+
+$\Delta t$ is the simulation time step.
+
+For example:
+
+simulation = DiffusionAdvectionDecay(
+    ...
+    source_positions=[(25, 25, 25)],
+    emission_rate=3.0
+)
+
+If source_effective_iterations is not specified, the source remains active for the duration of the simulation.
+
+## Temporally limited radioactive sources
+
+A source can also be active only during a defined number of simulation iterations using:
+
+source_effective_iterations
+
+For example:
+
+simulation = DiffusionAdvectionDecay(
+    ...
+    source_positions=[(25, 25, 25)],
+    emission_rate=3.0,
+    source_effective_iterations=100
+)
+
+In this case, the source is injected only during the initial 100 simulation iterations. After this period, no additional activity is introduced by the source, while the radioactive material already present in the domain continues to evolve according to diffusion, advection and radioactive decay.
+
+The source duration in physical time is determined by:
+
+$$
+T_s = N_s\Delta t
+$$
+
+where:
+
+$T_s$ is the source emission duration in seconds.
+
+$N_s$ is source_effective_iterations.
+
+$\Delta t$ is the simulation time step.
+
+Therefore, for a simulation with:
+
+dt = 0.1
+
+a source intended to remain active for 60 seconds would require:
+
+source_effective_iterations = 600
+
+This functionality makes it possible to represent different source-release scenarios, including:
+
+continuous emission throughout the simulation;
+
+emission during a finite time interval;
+
+an initial release followed by a period without further source injection.
+
+Important: source_effective_iterations is expressed in number of simulation iterations, rather than directly in seconds.
 
 ## Multiple point sources
 
 Several point sources can be defined simultaneously:
 
-```python
 source_positions = [
     (10, 10, 10),
     (25, 25, 25),
     (40, 40, 40)
 ]
-```
 
-All specified positions are injected during the simulation.
+All specified positions are injected while the source is active. If several source points are placed next to each other, they can represent an extended two- or three-dimensional source region.
 
-> **Important:** source positions refer to **grid indices**, not directly to physical coordinates in metres.
+Important: source positions refer to grid indices, not directly to physical coordinates in metres.
 
 For a grid spacing of:
 
-```python
 d = (0.5, 0.5, 0.5, 0.1)
-```
 
 the grid point:
 
-```python
 (10, 10, 10)
-```
 
 corresponds to approximately:
 
-```text
 (5 m, 5 m, 5 m)
-```
-
----
 
 # 3. Run a simulation
-
 ## General simulation
-
-The general transport class is:
-
-```python
-from DifAdDec.diffusion_advection_decay import DiffusionAdvectionDecay
-```
 
 Create a simulation:
 
 ```python
-simulation = DiffusionAdvectionDecay(
-    grid_shape=(50, 50, 50),
-    d=(0.5, 0.5, 0.5, 0.1),
-    total_time=1000.0,
-    diffusion_coefficient=(1e-3, 1e-3, 1e-3),
-    species_name="U-234",
-    source_positions=[(25, 25, 25)],
-    emission_rate=3.0
+simulation = (Indoors/Outdoors)DiffusionAdvectionDecay(
+grid_shape=(50, 50, 50),
+d=(0.5, 0.5, 0.5, 0.1),
+total_time=1000.0,
+diffusion_coefficient=(1e-3, 1e-3, 1e-3),
+species_name="U-234",
+source_positions=[(25, 25, 25)],
+emission_rate=3.0
+...
 )
 ```
 
@@ -410,7 +457,7 @@ Then execute:
 
 ```python
 results = simulation.run(
-    save_every_X_iteration=100
+save_every_X_iteration=100
 )
 ```
 
@@ -447,10 +494,10 @@ After running a simulation, a saved concentration field can be visualized using:
 
 ```python
 simulation.plot_instant(
-    plot_name="Radioactive concentration",
-    visualization_type="3d",
-    vertical_axis="z",
-    time_to_check=100.0
+plot_name="Radioactive concentration",
+visualization_type="3d",
+vertical_axis="z",
+time_to_check=100.0
 )
 ```
 
@@ -470,10 +517,10 @@ For example:
 
 ```python
 simulation.plot_instant(
-    plot_name="Concentration at t = 100 s",
-    visualization_type="2d",
-    vertical_axis="z",
-    time_to_check=100.0
+plot_name="Concentration at t = 100 s",
+visualization_type="2d",
+vertical_axis="z",
+time_to_check=100.0
 )
 ```
 
@@ -483,11 +530,11 @@ The `levels` parameter can be used to specify the grid levels to display:
 
 ```python
 simulation.plot_instant(
-    plot_name="Selected planes",
-    visualization_type="3d",
-    vertical_axis="z",
-    levels=[10, 25, 40],
-    time_to_check=100.0
+plot_name="Selected planes",
+visualization_type="3d",
+vertical_axis="z",
+levels=[10, 25, 40],
+time_to_check=100.0
 )
 ```
 
@@ -507,8 +554,8 @@ A saved concentration field can be exported to CSV:
 
 ```python
 simulation.make_csv_for_instant(
-    time=100.0,
-    filename="concentration_100s.csv"
+time=100.0,
+filename="concentration_100s.csv"
 )
 ```
 
@@ -533,7 +580,7 @@ If no time is provided:
 
 ```python
 simulation.make_csv_for_instant(
-    filename="concentration.csv"
+filename="concentration.csv"
 )
 ```
 
@@ -554,8 +601,8 @@ IndoorsDiffusionAdvectionDecay
 Import it with:
 
 ```python
-from DifAdDec.indoors_diffusion_advection_decay import (
-    IndoorsDiffusionAdvectionDecay
+from DifAdDec import (
+IndoorsDiffusionAdvectionDecay
 )
 ```
 
@@ -568,26 +615,24 @@ The indoor model extends the general diffusion-advection-decay model and adds:
 * Inlet concentration
 * An internally calculated velocity field
 
-The class inherits the basic transport configuration from `DiffusionAdvectionDecay`.
-
 ---
 
 ## Basic indoor example
 
 ```python
 simulation = IndoorsDiffusionAdvectionDecay(
-    grid_shape=(50, 50, 50),
-    d=(0.5, 0.5, 0.5, 0.1),
-    total_time=1000.0,
-    diffusion_coefficient=(1e-3, 1e-3, 1e-3),
-    species_name="U-234",
-    source_positions=[(25, 25, 25)],
-    emission_rate=3.0,
-    wall_deposition=1e-4
+grid_shape=(50, 50, 50),
+d=(0.5, 0.5, 0.5, 0.1),
+total_time=1000.0,
+diffusion_coefficient=(1e-3, 1e-3, 1e-3),
+species_name="U-234",
+source_positions=[(25, 25, 25)],
+emission_rate=3.0,
+wall_deposition=1e-4
 )
 
 results = simulation.run(
-    save_every_X_iteration=100
+save_every_X_iteration=100
 )
 ```
 
@@ -616,11 +661,11 @@ For example:
 
 ```python
 inlet_regions = [
-    {
-        "wall": "xmin",
-        "y": (10, 20),
-        "z": (10, 20)
-    }
+{
+"wall": "xmin",
+"y": (10, 20),
+"z": (10, 20)
+}
 ]
 ```
 
@@ -643,11 +688,11 @@ Example:
 
 ```python
 outlet_regions = [
-    {
-        "wall": "xmax",
-        "y": (30, 40),
-        "z": (10, 20)
-    }
+{
+"wall": "xmax",
+"y": (30, 40),
+"z": (10, 20)
+}
 ]
 ```
 
@@ -677,8 +722,8 @@ OutdoorsDiffusionAdvectionDecay
 Import:
 
 ```python
-from DifAdDec.outdoors_diffusion_advection_decay import (
-    OutdoorsDiffusionAdvectionDecay
+from DifAdDec import (
+OutdoorsDiffusionAdvectionDecay
 )
 ```
 
@@ -688,18 +733,18 @@ The basic structure is:
 
 ```python
 simulation = OutdoorsDiffusionAdvectionDecay(
-    wind_model=wind_model,
-    grid_shape=(50, 50, 50),
-    d=(0.5, 0.5, 0.5, 0.1),
-    total_time=1000.0,
-    diffusion_coefficient=(1e-3, 1e-3, 1e-3),
-    species_name="U-234",
-    source_positions=[(25, 25, 25)],
-    emission_rate=3.0
+wind_model=wind_model,
+grid_shape=(50, 50, 50),
+d=(0.5, 0.5, 0.5, 0.1),
+total_time=1000.0,
+diffusion_coefficient=(1e-3, 1e-3, 1e-3),
+species_name="U-234",
+source_positions=[(25, 25, 25)],
+emission_rate=3.0
 )
 
 results = simulation.run(
-    save_every_X_iteration=100
+save_every_X_iteration=100
 )
 ```
 
@@ -712,11 +757,11 @@ results = simulation.run(
 Import them from the wind-field module:
 
 ```python
-from DifAdDec.windfield import (
-    UniformField,
-    ShearField,
-    GustField,
-    VortexField
+from DifAdDec import (
+UniformField,
+ShearField,
+GustField,
+VortexField
 )
 ```
 
@@ -728,8 +773,8 @@ A uniform velocity field is defined with:
 
 ```python
 wind = UniformField(
-    grid_shape=(50, 50, 50),
-    initial_velocity=(5.0, 0.0, 0.0)
+grid_shape=(50, 50, 50),
+initial_velocity=(5.0, 0.0, 0.0)
 )
 ```
 
@@ -751,10 +796,10 @@ The `ShearField` model creates a wind speed that varies with height:
 
 ```python
 wind = ShearField(
-    grid_shape=(50, 50, 50),
-    Uref=5.0,
-    zref=10,
-    alpha=0.20
+grid_shape=(50, 50, 50),
+Uref=5.0,
+zref=10,
+alpha=0.20
 )
 ```
 
@@ -770,10 +815,10 @@ The `GustField` model introduces temporal variation:
 
 ```python
 wind = GustField(
-    grid_shape=(50, 50, 50),
-    Umean=5.0,
-    amplitude=2.0,
-    period=120
+grid_shape=(50, 50, 50),
+Umean=5.0,
+amplitude=2.0,
+period=120
 )
 ```
 
@@ -803,8 +848,8 @@ A rotational velocity field can be generated using:
 
 ```python
 wind = VortexField(
-    grid_shape=(50, 50, 50),
-    omega=0.02
+grid_shape=(50, 50, 50),
+omega=0.02
 )
 ```
 
@@ -815,49 +860,48 @@ The resulting velocity field rotates around the central vertical axis of the com
 # Complete outdoor example
 
 ```python
-from DifAdDec.outdoors_diffusion_advection_decay import (
-    OutdoorsDiffusionAdvectionDecay
+from DifAdDec import (
+OutdoorsDiffusionAdvectionDecay
 )
 
-from DifAdDec.windfield import UniformField
-
+from DifAdDec import UniformField
 
 grid_shape = (50, 50, 50)
 
 d = (
-    0.5,   # dx [m]
-    0.5,   # dy [m]
-    0.5,   # dz [m]
-    0.1    # dt [s]
+0.5,   # dx [m]
+0.5,   # dy [m]
+0.5,   # dz [m]
+0.1    # dt [s]
 )
 
 wind = UniformField(
-    grid_shape=grid_shape,
-    initial_velocity=(5.0, 0.0, 0.0)
+grid_shape=grid_shape,
+initial_velocity=(5.0, 0.0, 0.0)
 )
 
 simulation = OutdoorsDiffusionAdvectionDecay(
-    wind_model=wind,
-    grid_shape=grid_shape,
-    d=d,
-    total_time=1000.0,
-    diffusion_coefficient=(1e-3, 1e-3, 1e-3),
-    species_name="U-234",
-    source_positions=[
-        (25, 25, 25)
-    ],
-    emission_rate=3.0
+wind_model=wind,
+grid_shape=grid_shape,
+d=d,
+total_time=1000.0,
+diffusion_coefficient=(1e-3, 1e-3, 1e-3),
+species_name="U-234",
+source_positions=[
+(25, 25, 25)
+],
+emission_rate=3.0
 )
 
 results = simulation.run(
-    save_every_X_iteration=100
+save_every_X_iteration=100
 )
 
 simulation.plot_instant(
-    plot_name="Outdoor radioactive dispersion",
-    visualization_type="3d",
-    vertical_axis="z",
-    time_to_check=100.0
+plot_name="Outdoor radioactive dispersion",
+visualization_type="3d",
+vertical_axis="z",
+time_to_check=100.0
 )
 ```
 
@@ -870,20 +914,20 @@ Once a transport simulation has been completed, the concentration fields can be 
 Import:
 
 ```python
-from DifAdDec.hrtm import HRTM
+from DifAdDec import HRTM
 ```
 
 Create an HRTM object using the completed simulation:
 
 ```python
 hrtm = HRTM(
-    simulation,
-    population_type="public",
-    age_group="adult",
-    gender="male",
-    physical_activity="sitting",
-    absorption="F",
-    exposition_time=1000.0
+simulation,
+population_type="public",
+age_group="adult",
+gender="male",
+physical_activity="sitting",
+absorption="F",
+exposition_time=1000.0
 )
 ```
 
@@ -913,13 +957,13 @@ Conceptually, the workflow is:
 
 ```text
 Concentration field
-        ↓
+↓
 Breathing rate
-        ↓
+↓
 Inhaled activity
-        ↓
+↓
 Inhalation dose coefficient
-        ↓
+↓
 Dose field
 ```
 
@@ -942,13 +986,13 @@ For example:
 
 ```python
 hrtm = HRTM(
-    simulation,
-    population_type="public",
-    age_group="adult",
-    gender="male",
-    physical_activity="sitting",
-    absorption="F",
-    exposition_time=600.0
+simulation,
+population_type="public",
+age_group="adult",
+gender="male",
+physical_activity="sitting",
+absorption="F",
+exposition_time=600.0
 )
 ```
 
@@ -968,8 +1012,8 @@ the calculated dose field can be exported:
 
 ```python
 hrtm.make_csv_for_instant(
-    time=100.0,
-    filename="dose_100s.csv"
+time=100.0,
+filename="dose_100s.csv"
 )
 ```
 
@@ -992,10 +1036,10 @@ The dose field can be visualized using:
 
 ```python
 hrtm.plot_instant(
-    plot_name="Inhalation dose",
-    visualization_type="3d",
-    vertical_axis="z",
-    time_to_check=100.0
+plot_name="Inhalation dose",
+visualization_type="3d",
+vertical_axis="z",
+time_to_check=100.0
 )
 ```
 
@@ -1011,7 +1055,7 @@ For example:
 
 ```python
 simulation.animate(
-    plot_name="Concentration evolution"
+plot_name="Concentration evolution"
 )
 ```
 
@@ -1021,8 +1065,8 @@ Specific `z` levels can be provided:
 
 ```python
 simulation.animate(
-    plot_name="Concentration evolution",
-    z_values=[5, 10, 20, 30, 40, 45]
+plot_name="Concentration evolution",
+z_values=[5, 10, 20, 30, 40, 45]
 )
 ```
 
@@ -1030,8 +1074,8 @@ The same approach can be used for HRTM:
 
 ```python
 hrtm.animate(
-    plot_name="Dose evolution",
-    z_values=[5, 10, 20, 30, 40, 45]
+plot_name="Dose evolution",
+z_values=[5, 10, 20, 30, 40, 45]
 )
 ```
 
@@ -1072,16 +1116,11 @@ If the stability conditions are not satisfied, the library raises a `ValueError`
 The following example illustrates the recommended workflow from transport simulation to dose calculation.
 
 ```python
-from DifAdDec.outdoors_diffusion_advection_decay import (
-    OutdoorsDiffusionAdvectionDecay
+from DifAdDec import (
+OutdoorsDiffusionAdvectionDecay
+UniformField
+HRTM
 )
-
-from DifAdDec.windfield import (
-    UniformField
-)
-
-from DifAdDec.hrtm import HRTM
-
 
 # --------------------------------------------------
 # 1. Simulation configuration
@@ -1090,92 +1129,85 @@ from DifAdDec.hrtm import HRTM
 grid_shape = (50, 50, 50)
 
 d = (
-    0.5,   # dx [m]
-    0.5,   # dy [m]
-    0.5,   # dz [m]
-    0.1    # dt [s]
+0.5,   # dx [m]
+0.5,   # dy [m]
+0.5,   # dz [m]
+0.1    # dt [s]
 )
 
 total_time = 1000.0
-
 
 # --------------------------------------------------
 # 2. Wind field
 # --------------------------------------------------
 
 wind = UniformField(
-    grid_shape=grid_shape,
-    initial_velocity=(5.0, 0.0, 0.0)
+grid_shape=grid_shape,
+initial_velocity=(5.0, 0.0, 0.0)
 )
-
 
 # --------------------------------------------------
 # 3. Transport model
 # --------------------------------------------------
 
 simulation = OutdoorsDiffusionAdvectionDecay(
-    wind_model=wind,
-    grid_shape=grid_shape,
-    d=d,
-    total_time=total_time,
-    diffusion_coefficient=(
-        1e-3,
-        1e-3,
-        1e-3
-    ),
-    species_name="U-234",
-    source_positions=[
-        (25, 25, 25)
-    ],
-    emission_rate=3.0
+wind_model=wind,
+grid_shape=grid_shape,
+d=d,
+total_time=total_time,
+diffusion_coefficient=(
+1e-3,
+1e-3,
+1e-3
+),
+species_name="U-234",
+source_positions=[
+(25, 25, 25)
+],
+emission_rate=3.0
 )
-
 
 # --------------------------------------------------
 # 4. Run simulation
 # --------------------------------------------------
 
 results = simulation.run(
-    save_every_X_iteration=100
+save_every_X_iteration=100
 )
-
 
 # --------------------------------------------------
 # 5. Visualize concentration
 # --------------------------------------------------
 
 simulation.plot_instant(
-    plot_name="Radioactive dispersion",
-    visualization_type="3d",
-    vertical_axis="z",
-    time_to_check=100.0
+plot_name="Radioactive dispersion",
+visualization_type="3d",
+vertical_axis="z",
+time_to_check=100.0
 )
-
 
 # --------------------------------------------------
 # 6. Export concentration
 # --------------------------------------------------
 
 simulation.make_csv_for_instant(
-    time=100.0,
-    filename="concentration_100s.csv"
+time=100.0,
+filename="concentration_100s.csv"
 )
-
 
 # --------------------------------------------------
 # 7. Create HRTM model
 # --------------------------------------------------
 
 hrtm = HRTM(
-    simulation,
-    population_type="public",
-    age_group="adult",
-    gender="male",
-    physical_activity="sitting",
-    absorption="F",
-    exposition_time=100.0
+simulation,
+population_type="public",
+age_group="adult",
+gender="male",
+physical_activity="sitting",
+absorption="F",
+exposition_time=100.0
 )
-
 
 # --------------------------------------------------
 # 8. Calculate dose
@@ -1183,26 +1215,24 @@ hrtm = HRTM(
 
 dose = hrtm.effective_dose_commitment()
 
-
 # --------------------------------------------------
 # 9. Visualize dose
 # --------------------------------------------------
 
 hrtm.plot_instant(
-    plot_name="Inhalation dose",
-    visualization_type="3d",
-    vertical_axis="z",
-    time_to_check=100.0
+plot_name="Inhalation dose",
+visualization_type="3d",
+vertical_axis="z",
+time_to_check=100.0
 )
-
 
 # --------------------------------------------------
 # 10. Export dose
 # --------------------------------------------------
 
 hrtm.make_csv_for_instant(
-    time=100.0,
-    filename="dose_100s.csv"
+time=100.0,
+filename="dose_100s.csv"
 )
 ```
 
@@ -1270,7 +1300,7 @@ The library performs the stability checks automatically.
 
 ```python
 results = simulation.run(
-    save_every_X_iteration=100
+save_every_X_iteration=100
 )
 ```
 
@@ -1338,7 +1368,7 @@ Source positions are specified using grid indices:
 
 ```python
 source_positions=[
-    (i, j, k)
+(i, j, k)
 ]
 ```
 
@@ -1374,7 +1404,7 @@ For example:
 
 ```python
 simulation.run(
-    save_every_X_iteration=100
+save_every_X_iteration=100
 )
 ```
 
@@ -1384,7 +1414,7 @@ Consequently, requesting an unsaved time:
 
 ```python
 simulation.plot_instant(
-    time_to_check=37.0
+time_to_check=37.0
 )
 ```
 

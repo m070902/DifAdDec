@@ -32,7 +32,7 @@ def read_radionuclides_file(file_name: str):
 
 
 def lambda_for_species(species_name: str):
-    path = files("radioprotection.data").joinpath("radionuclidos.csv")
+    path = files("DifAdDec.data").joinpath("radionuclidos.csv")
     radionuclides, half_life_values, units, types = read_radionuclides_file(path)
 
     target_position = radionuclides.index(species_name)

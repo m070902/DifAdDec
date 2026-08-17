@@ -17,9 +17,10 @@ class OutdoorsDiffusionAdvectionDecay(DiffusionAdvectionDecay):
         diffusion_coefficient=(1e-3, 1e-3, 1e-3),   # m²/s
         species_name = "U-234",
         source_positions=[(25, 25, 25)],
+        source_effective_iterations = None,
         emission_rate=3.0
     ):
-        super().__init__(grid_shape, d, total_time, diffusion_coefficient, species_name, source_positions, emission_rate)
+        super().__init__(grid_shape, d, total_time, diffusion_coefficient, species_name, source_positions, source_effective_iterations,emission_rate)
 
         self.__wind_model = wind_model
 
@@ -118,8 +119,6 @@ class OutdoorsDiffusionAdvectionDecay(DiffusionAdvectionDecay):
 
         self._apply_boundary_conditions_concentration(concentration_aux)
 
-        self._inject_sources()
-
     def run(self, save_every_X_iteration=100):
 
         total_steps = int(self._total_time / self._d[3])
@@ -131,6 +130,9 @@ class OutdoorsDiffusionAdvectionDecay(DiffusionAdvectionDecay):
             current_time = n * self._d[3]
 
             self._step_concentration(current_time)
+
+            if n < self._source_effective_iterations:
+                self._inject_sources()
 
             if n % save_every_X_iteration == 0:
 

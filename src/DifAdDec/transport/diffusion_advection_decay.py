@@ -31,6 +31,7 @@ class DiffusionAdvectionDecay:
         diffusion_coefficient=(1e-3, 1e-3, 1e-3),   # m²/s
         species_name = "U-234",
         source_positions=[(25, 25, 25)],
+        source_effective_iterations = None,
         emission_rate=3.0
         ):
 
@@ -44,6 +45,10 @@ class DiffusionAdvectionDecay:
         self._total_time = total_time
         self._concentration = np.zeros(self._N)
         self._saved_fields = {}
+        if source_effective_iterations == None:
+            self._source_effective_iterations = total_time*d[3]
+        else:
+            self._source_effective_iterations = source_effective_iterations
 
 
     def _compute_diffusion(self, concentration_aux: list[float]):
