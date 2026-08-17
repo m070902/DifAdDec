@@ -312,25 +312,36 @@ corresponds to a domain with approximately:
 
 Radioactive sources are defined using:
 
+```text
+simulation = DiffusionAdvectionDecay(
 source_positions
+```
 
 and:
 
+```text
 emission_rate
+```
 
 For example:
 
+```text
 source_positions = [
     (25, 25, 25)
 ]
+```
 
+```
 emission_rate = 3.0
+```
 
 defines a source at the grid position:
 
+```text
 x = 25
 y = 25
 z = 25
+```
 
 The current implementation allows both continuous sources and temporally limited sources.
 
@@ -352,11 +363,13 @@ $\Delta t$ is the simulation time step.
 
 For example:
 
+```python
 simulation = DiffusionAdvectionDecay(
     ...
     source_positions=[(25, 25, 25)],
     emission_rate=3.0
 )
+```
 
 If source_effective_iterations is not specified, the source remains active for the duration of the simulation.
 
@@ -364,16 +377,20 @@ If source_effective_iterations is not specified, the source remains active for t
 
 A source can also be active only during a defined number of simulation iterations using:
 
+```text
 source_effective_iterations
+```
 
 For example:
 
+```python
 simulation = DiffusionAdvectionDecay(
     ...
     source_positions=[(25, 25, 25)],
     emission_rate=3.0,
     source_effective_iterations=100
 )
+```
 
 In this case, the source is injected only during the initial 100 simulation iterations. After this period, no additional activity is introduced by the source, while the radioactive material already present in the domain continues to evolve according to diffusion, advection and radioactive decay.
 
@@ -393,11 +410,15 @@ $\Delta t$ is the simulation time step.
 
 Therefore, for a simulation with:
 
+```python
 dt = 0.1
+```
 
 a source intended to remain active for 60 seconds would require:
 
+```python
 source_effective_iterations = 600
+```
 
 This functionality makes it possible to represent different source-release scenarios, including:
 
@@ -413,11 +434,13 @@ Important: source_effective_iterations is expressed in number of simulation iter
 
 Several point sources can be defined simultaneously:
 
+```python
 source_positions = [
     (10, 10, 10),
     (25, 25, 25),
     (40, 40, 40)
 ]
+```
 
 All specified positions are injected while the source is active. If several source points are placed next to each other, they can represent an extended two- or three-dimensional source region.
 
@@ -425,15 +448,21 @@ Important: source positions refer to grid indices, not directly to physical coor
 
 For a grid spacing of:
 
+```python
 d = (0.5, 0.5, 0.5, 0.1)
+```
 
 the grid point:
 
+```python
 (10, 10, 10)
+```
 
 corresponds to approximately:
 
+```python
 (5 m, 5 m, 5 m)
+```
 
 # 3. Run a simulation
 ## General simulation
