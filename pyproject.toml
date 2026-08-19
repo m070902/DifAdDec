@@ -6,7 +6,7 @@ requires = [
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "DifAdDec"
+name = "difaddec"
 version = "0.1.0"
 
 description = "Three-dimensional simulation of radioactive contaminant transport through diffusion, advection and radioactive decay."

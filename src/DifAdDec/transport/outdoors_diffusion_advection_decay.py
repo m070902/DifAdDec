@@ -131,7 +131,7 @@ class OutdoorsDiffusionAdvectionDecay(DiffusionAdvectionDecay):
 
             self._step_concentration(current_time)
 
-            if n < self._source_effective_iterations:
+            if n <= self._source_effective_iterations:
                 self._inject_sources()
 
             if n % save_every_X_iteration == 0:

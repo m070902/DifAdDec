@@ -5,9 +5,9 @@
     "F-18"
   ],
   "Q_REFERENCE_Bq_s": {
-    "Tc-99m": 100.0,
-    "I-131": 100.0,
-    "F-18": 100.0
+    "Tc-99m": 8330000.0,
+    "I-131": 61700000.0,
+    "F-18": 6670000.0
   },
   "emission_factors": [
     0.25,
@@ -35,7 +35,7 @@
     0.001
   ],
   "total_time_s": 600.0,
-  "save_every": 60,
+  "save_every": 30,
   "hrtm_emission_factors": [
     0.5,
     1.0,
@@ -66,5 +66,27 @@
       "physical_activity": "running",
       "absorption": "F"
     }
+  ],
+  "temporal_source_fractions": [
+    0.1,
+    0.25,
+    0.5,
+    1.0,
+    1.5
+  ],
+  "temporal_source_emission_factors": [
+    0.5,
+    1.0,
+    2.0
+  ],
+  "temporal_source_radionuclides": [
+    "Tc-99m",
+    "I-131",
+    "F-18"
+  ],
+  "temporal_source_modes": [
+    "multiple_points",
+    "planar",
+    "volumetric"
   ]
 }

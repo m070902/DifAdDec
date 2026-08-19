@@ -1,8 +1,8 @@
 {
-  "total_result_rows": 504,
-  "concentration_simulations": 504,
-  "controlled": 216,
-  "reference": 72,
-  "uncontrolled": 216,
+  "total_result_rows": 1080,
+  "concentration_simulations": 1080,
+  "controlled": 360,
+  "reference": 360,
+  "uncontrolled": 360,
   "errors": 0
 }

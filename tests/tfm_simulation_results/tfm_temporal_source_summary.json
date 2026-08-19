@@ -1,0 +1,24 @@
+{
+  "total_tests": 1080,
+  "errors": 0,
+  "source_durations_s": [
+    60.0,
+    150.0,
+    300.0,
+    600.0,
+    900.0
+  ],
+  "source_duration_fractions": [
+    0.1,
+    0.25,
+    0.5,
+    1.0,
+    1.5
+  ],
+  "duration_configuration_failures": 0,
+  "source_iteration_semantics_failures": 0,
+  "off_by_one_cases": 0,
+  "shorter_than_simulation": 648,
+  "equal_to_simulation": 216,
+  "longer_than_simulation": 216
+}
