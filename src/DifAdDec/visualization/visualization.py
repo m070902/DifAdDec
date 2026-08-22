@@ -183,6 +183,7 @@ def plot_3d(
     concentration_max,
     vertical_axis_label,
     d,
+    gs,
     iteration=0
 ):
 
@@ -192,12 +193,16 @@ def plot_3d(
         d
     )
 
-    ax = fig.add_subplot(
-        2,
-        3,
-        iteration + 1,
-        projection="3d"
-    )
+    if iteration <= 2:
+        ax = fig.add_subplot(
+            gs[0, iteration],
+            projection = "3d"
+        )
+    elif iteration > 2:
+        ax = fig.add_subplot(
+            gs[1,iteration - 3],
+            projection = "3d"
+        )
 
     surf = ax.plot_surface(
         X,
@@ -238,6 +243,7 @@ def plot_2d(
     level,
     aux_axis,
     d,
+    gs,
     iteration=0
 ):
 
@@ -247,11 +253,16 @@ def plot_2d(
         d
     )
 
-    ax = fig.add_subplot(
-        2,
-        3,
-        iteration + 1
-    )
+    if iteration <= 2:
+        ax = fig.add_subplot(
+            gs[0, iteration],
+            projection = "2d"
+        )
+    elif iteration > 2:
+        ax = fig.add_subplot(
+            gs[1,iteration - 3],
+            projection = "2d"
+        )
 
     surf = ax.contourf(
         X,
@@ -278,14 +289,17 @@ def plot_2d(
 def define_color_bar(
     fig,
     norm,
-    colorbar_label
+    colorbar_label,
+    gs
 ):
+
     sm = cm.ScalarMappable(
         norm=norm,
         cmap="viridis"
     )
     sm.set_array([])
 
+    cax = fig.add_subplot(gs[:, 3])
 
     fig.colorbar(
         sm,
@@ -293,7 +307,8 @@ def define_color_bar(
         shrink=0.5,
         aspect=20,
         label=colorbar_label,
-        location="bottom"
+        location="right",
+        cax = cax
     )
 
 def plot_title(fig, title):

@@ -146,6 +146,12 @@ class DiffusionAdvectionDecay:
 
         fig, norm = define_initial_plotting_parameters()
 
+        gs = fig.add_gridspec(
+            2, 4,
+            width_ratios=[1, 1, 1, 0.08],
+            wspace=0.35,
+            hspace=0.35)
+
         for i, level in enumerate(levels):
 
             Z = define_Z_values(
@@ -173,6 +179,7 @@ class DiffusionAdvectionDecay:
                         r"$C/C_{\max}$"
                     ),
                     d=self._d,
+                    gs = gs,
                     iteration=i
                 )
 
@@ -188,6 +195,7 @@ class DiffusionAdvectionDecay:
                     level,
                     aux_axis,
                     d=self._d,
+                    gs=gs,
                     iteration=i
                 )
 
@@ -197,6 +205,15 @@ class DiffusionAdvectionDecay:
                     "The provided string for visualization type is not valid."
                 )
 
+        fig.subplots_adjust(
+            left=0.18,
+            right=0.76,
+            bottom=0.10,
+            top=0.92,
+            wspace=0.30,
+            hspace=0.30
+        )
+
         define_color_bar(
             fig,
             norm,
@@ -205,7 +222,8 @@ class DiffusionAdvectionDecay:
                 "\n"
                 rf"$C_{{\max}} = {concentration_max:.2e}\ "
                 rf"\mathrm{{Bq\,m^{{-3}}}}$"
-            )
+            ),
+            gs = gs
         )
 
         plot_title(
@@ -232,7 +250,11 @@ class DiffusionAdvectionDecay:
                 dtype=int
             )
 
-        # Global maximum concentration
+        if len(z_values) != 6:
+            raise ValueError(
+                "animate() requires exactly 6 z-values."
+            )
+
         concentration_max = max(
             np.max(field)
             for field in self._saved_fields.values()
@@ -241,7 +263,6 @@ class DiffusionAdvectionDecay:
         if concentration_max == 0:
             concentration_max = 1.0
 
-        # Physical coordinates
         x = np.arange(self._N[0]) * self._d[0]
         y = np.arange(self._N[1]) * self._d[1]
 
@@ -252,22 +273,35 @@ class DiffusionAdvectionDecay:
             y[-1]
         ]
 
-        fig, axes = plt.subplots(
-            2,
-            3,
-            figsize=(12, 8),
-            num=plot_name
+
+        fig = plt.figure(
+            figsize=(14, 10),
+            num=plot_name,
+            clear=True
         )
 
-        axes = axes.ravel()
+        axes = [
+            fig.add_axes([0.08, 0.56, 0.20, 0.28]),
+            fig.add_axes([0.35, 0.56, 0.20, 0.28]),
+            fig.add_axes([0.62, 0.56, 0.20, 0.28]),
 
-        # Normalize the first concentration field
+            fig.add_axes([0.08, 0.12, 0.20, 0.28]),
+            fig.add_axes([0.35, 0.12, 0.20, 0.28]),
+            fig.add_axes([0.62, 0.12, 0.20, 0.28]),
+        ]
+
+        cax = fig.add_axes(
+            [0.87, 0.16, 0.025, 0.68]
+        )
+
+
         first = (
             self._saved_fields[times[0]]
             / concentration_max
         )
 
         ims = []
+
 
         for ax, z in zip(axes, z_values):
 
@@ -284,20 +318,26 @@ class DiffusionAdvectionDecay:
             )
 
             ax.set_title(
-                f"z = {z * self._d[2]:.2f} m"
+                f"z = {z * self._d[2]:.2f} m",
+                fontsize=12,
+                pad=8
             )
 
-            ax.set_xlabel("x (m)")
-            ax.set_ylabel("y (m)")
+            ax.set_xlabel(
+                "x (m)",
+                labelpad=6
+            )
+
+            ax.set_ylabel(
+                "y (m)",
+                labelpad=6
+            )
 
             ims.append(im)
 
-        # Single colorbar
         cbar = fig.colorbar(
             ims[0],
-            ax=axes,
-            fraction=0.035,
-            pad=0.03
+            cax=cax
         )
 
         cbar.set_label(
@@ -305,20 +345,25 @@ class DiffusionAdvectionDecay:
             "\n"
             rf"$C_{{\max}} = "
             rf"{concentration_max:.2e}\ "
-            rf"\mathrm{{Bq\,m^{{-3}}}}$"
+            rf"\mathrm{{Bq\,m^{{-3}}}}$",
+            labelpad=12
         )
+
 
         fig.suptitle(
             plot_name,
             fontsize=16,
-            fontweight="bold"
+            fontweight="bold",
+            x=0.5,
+            y=0.985
         )
 
         subtitle = fig.text(
             0.5,
-            0.94,
+            0.935,
             f"t = {times[0]:.2f} s",
             ha="center",
+            va="center",
             fontsize=12
         )
 
